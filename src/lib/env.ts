@@ -1,29 +1,34 @@
 /**
  * Environment variable validation.
- * Throws at startup if any required variable is missing.
- * Never import this in client components — use the client-safe subset below.
+ * In Next.js, public client-side variables MUST use direct static property access
+ * (e.g. process.env.NEXT_PUBLIC_...) so Webpack's DefinePlugin inlines them into the client bundle.
  */
 
-function requireEnv(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(
-      `[IIITL FM] Missing required environment variable: ${key}\n` +
-        `  Check your .env.local file. See .env.local.example for reference.`
-    );
-  }
-  return value;
-}
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
+
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 /** Server-only environment variables. Never expose to the browser. */
 export const serverEnv = {
-  SUPABASE_SERVICE_ROLE_KEY: () => requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  SUPABASE_SERVICE_ROLE_KEY: () => {
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!key) {
+      throw new Error(
+        "[IIITL FM] Missing required environment variable: SUPABASE_SERVICE_ROLE_KEY\n" +
+          "  Check your .env.local file. See .env.local.example for reference."
+      );
+    }
+    return key;
+  },
 } as const;
 
 /** Public environment variables — safe to use in both server and client code. */
 export const publicEnv = {
-  NEXT_PUBLIC_SUPABASE_URL: requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-  NEXT_PUBLIC_SITE_URL:
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
+  NEXT_PUBLIC_SITE_URL: siteUrl,
 } as const;

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/lib/auth/context";
+import { Header } from "@/components/Header";
 
 export const metadata: Metadata = {
   title: {
@@ -8,7 +10,13 @@ export const metadata: Metadata = {
   },
   description:
     "IIITL FM is the campus-exclusive shared music listening platform for IIIT Lucknow students. Submit songs, vibe together, discover your campus's musical taste.",
-  keywords: ["IIIT Lucknow", "campus radio", "shared music", "student platform", "IIITL FM"],
+  keywords: [
+    "IIIT Lucknow",
+    "campus radio",
+    "shared music",
+    "student platform",
+    "IIITL FM",
+  ],
   authors: [{ name: "IIIT Lucknow" }],
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
@@ -37,13 +45,22 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
         <link
           href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white">
+        <AuthProvider>
+          <Header />
+          <div className="flex-1 flex flex-col">{children}</div>
+        </AuthProvider>
+      </body>
     </html>
   );
 }
