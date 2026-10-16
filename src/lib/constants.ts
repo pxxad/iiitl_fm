@@ -45,3 +45,16 @@ export const LIVE_ROOM_CHANNEL = "iiitl-fm-live-room" as const;
 
 /** Supabase Realtime channel for playback state changes. */
 export const PLAYBACK_CHANNEL = "playback-state" as const;
+
+/** Maximum length of a single live chat message. */
+export const MAX_CHAT_MESSAGE_LENGTH = 200;
+
+/** Minimum milliseconds between chat messages per user (rate limit). */
+export const CHAT_RATE_LIMIT_MS = 2000;
+
+/** Minimum milliseconds between reaction actions per user (rate limit). */
+export const REACTION_RATE_LIMIT_MS = 500;
+
+/** Default number of recent chat messages loaded on initial connection. */
+export const DEFAULT_CHAT_HISTORY_LIMIT = 50;
+

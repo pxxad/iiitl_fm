@@ -1,9 +1,10 @@
 import { runPhase3Tests } from "../src/lib/__tests__/phase3-validation.test";
 import { runPhase4Tests } from "../src/lib/__tests__/phase4-playback.test";
+import { runPhase5Tests } from "../src/lib/__tests__/phase5-realtime.test";
 
 async function main() {
   console.log("=========================================");
-  console.log("  IIITL FM — Test Suite Runner (Phases 3 & 4) ");
+  console.log("  IIITL FM — Test Suite Runner (Phases 3, 4 & 5) ");
   console.log("=========================================\n");
 
   console.log("--- Running Phase 3 Tests ---");
@@ -34,7 +35,20 @@ async function main() {
     }
   }
 
-  const total = p3Results.length + p4Results.length;
+  console.log("\n--- Running Phase 5 Tests ---");
+  const p5Results = await runPhase5Tests();
+
+  for (const r of p5Results) {
+    if (r.passed) {
+      passedCount++;
+      console.log(`  ✓ ${r.test}`);
+    } else {
+      failedCount++;
+      console.error(`  ✗ ${r.test} - ${r.error}`);
+    }
+  }
+
+  const total = p3Results.length + p4Results.length + p5Results.length;
   console.log("\n-----------------------------------------");
   console.log(`Total: ${total} | Passed: ${passedCount} | Failed: ${failedCount}`);
   console.log("-----------------------------------------");
@@ -50,4 +64,5 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
 

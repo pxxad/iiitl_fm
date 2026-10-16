@@ -92,6 +92,25 @@ export interface SongWithProfile extends Song {
 /** Reaction counts per type for a song. */
 export type ReactionCounts = Partial<Record<ReactionType, number>>;
 
+/** Live chat message stored in the database. */
+export interface ChatMessage {
+  id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  profiles?: Pick<Profile, "full_name" | "avatar_url" | "branch" | "batch"> | null;
+}
+
+/** Realtime room presence state for an active listener. */
+export interface PresenceUser {
+  user_id: string | null;
+  display_name: string;
+  branch: string | null;
+  avatar_url: string | null;
+  is_guest: boolean;
+  joined_at: string;
+}
+
 // ─── API response wrappers ────────────────────────────────────────────────────
 
 export interface ApiSuccess<T> {
@@ -108,3 +127,4 @@ export interface ApiError {
 }
 
 export type ApiResult<T> = ApiSuccess<T> | ApiError;
+
