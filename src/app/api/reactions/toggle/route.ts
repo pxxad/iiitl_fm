@@ -126,14 +126,43 @@ export async function POST(request: NextRequest) {
       activeType = reactionType as ReactionType;
     }
   } else {
-    // Add reaction
-    await supabase.from("reactions").insert({
+    // Add reaction with concurrency retry on unique conflict
+    const { error: insertErr } = await supabase.from("reactions").insert({
       song_id: songId,
       user_id: user.id,
       reaction_type: reactionType as ReactionType,
     });
-    action = "added";
-    activeType = reactionType as ReactionType;
+
+    if (insertErr) {
+      // Re-fetch to handle race with another concurrent request
+      const { data: retryExisting } = await supabase
+        .from("reactions")
+        .select("id, reaction_type")
+        .eq("song_id", songId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (retryExisting) {
+        if (retryExisting.reaction_type === reactionType) {
+          await supabase.from("reactions").delete().eq("id", retryExisting.id);
+          action = "removed";
+          activeType = null;
+        } else {
+          await supabase
+            .from("reactions")
+            .update({ reaction_type: reactionType as ReactionType })
+            .eq("id", retryExisting.id);
+          action = "changed";
+          activeType = reactionType as ReactionType;
+        }
+      } else {
+        action = "added";
+        activeType = reactionType as ReactionType;
+      }
+    } else {
+      action = "added";
+      activeType = reactionType as ReactionType;
+    }
   }
 
   // Get updated counts

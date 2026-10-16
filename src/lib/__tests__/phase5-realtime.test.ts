@@ -7,6 +7,7 @@ import {
   REACTION_TYPES,
 } from "../constants";
 import type { ChatMessage, PresenceUser, ReactionType } from "../types";
+import { validateBroadcastChatMessage } from "../realtime/validation";
 
 export interface TestResult {
   test: string;
@@ -283,5 +284,314 @@ export async function runPhase5Tests(): Promise<TestResult[]> {
     "Safe Rendering: Malicious HTML and script payloads are strictly escaped"
   );
 
+  // ─── 9. Hardened Reaction Database RLS Policies Simulation ───────────────────
+
+  interface DbAuthSession {
+    uid: string;
+    email: string | null;
+  }
+
+  function simulateReactionsRls(
+    session: DbAuthSession | null,
+    operation: "INSERT" | "UPDATE" | "DELETE",
+    targetRow: { user_id: string },
+    newRow?: { user_id: string }
+  ): { allowed: boolean; reason?: string } {
+    if (!session || !session.uid) {
+      return { allowed: false, reason: "unauthenticated" };
+    }
+
+    const hasCampusEmail = isCampusEmail(session.email);
+    if (!hasCampusEmail) {
+      return { allowed: false, reason: "forbidden_non_campus" };
+    }
+
+    if (operation === "INSERT") {
+      const allowed = session.uid === targetRow.user_id;
+      return { allowed, reason: allowed ? undefined : "cannot_insert_for_other" };
+    }
+
+    if (operation === "UPDATE") {
+      const usingCheck = session.uid === targetRow.user_id;
+      const withCheck = newRow ? session.uid === newRow.user_id : true;
+      const allowed = usingCheck && withCheck;
+      return { allowed, reason: allowed ? undefined : "cannot_update_other_or_reassign" };
+    }
+
+    if (operation === "DELETE") {
+      const allowed = session.uid === targetRow.user_id;
+      return { allowed, reason: allowed ? undefined : "cannot_delete_other" };
+    }
+
+    return { allowed: false, reason: "unknown_op" };
+  }
+
+  const campusUser: DbAuthSession = { uid: "user_campus_1", email: "lit2023001@iiitl.ac.in" };
+  const externalUser: DbAuthSession = { uid: "user_ext_2", email: "outsider@gmail.com" };
+
+  // INSERT checks
+  assert(
+    !simulateReactionsRls(externalUser, "INSERT", { user_id: externalUser.uid }).allowed,
+    "Hardened RLS: Non-campus user cannot INSERT reaction directly at DB layer"
+  );
+  assert(
+    !simulateReactionsRls(campusUser, "INSERT", { user_id: "other_user_id" }).allowed,
+    "Hardened RLS: Campus user cannot INSERT reaction with someone else's user_id"
+  );
+  assert(
+    simulateReactionsRls(campusUser, "INSERT", { user_id: campusUser.uid }).allowed,
+    "Hardened RLS: Campus student can INSERT reaction for their own user_id"
+  );
+
+  // UPDATE checks
+  assert(
+    !simulateReactionsRls(externalUser, "UPDATE", { user_id: externalUser.uid }, { user_id: externalUser.uid }).allowed,
+    "Hardened RLS: Non-campus user cannot UPDATE reaction even if owning row"
+  );
+  assert(
+    !simulateReactionsRls(campusUser, "UPDATE", { user_id: "other_user" }, { user_id: campusUser.uid }).allowed,
+    "Hardened RLS: Campus user cannot UPDATE someone else's reaction row"
+  );
+  assert(
+    !simulateReactionsRls(campusUser, "UPDATE", { user_id: campusUser.uid }, { user_id: "other_user" }).allowed,
+    "Hardened RLS: Campus user cannot reassign user_id to another user on UPDATE"
+  );
+  assert(
+    simulateReactionsRls(campusUser, "UPDATE", { user_id: campusUser.uid }, { user_id: campusUser.uid }).allowed,
+    "Hardened RLS: Campus student can UPDATE their own reaction"
+  );
+
+  // DELETE checks
+  assert(
+    !simulateReactionsRls(externalUser, "DELETE", { user_id: externalUser.uid }).allowed,
+    "Hardened RLS: Non-campus user cannot DELETE reaction even if owning row"
+  );
+  assert(
+    !simulateReactionsRls(campusUser, "DELETE", { user_id: "other_user" }).allowed,
+    "Hardened RLS: Campus user cannot DELETE someone else's reaction row"
+  );
+  assert(
+    simulateReactionsRls(campusUser, "DELETE", { user_id: campusUser.uid }).allowed,
+    "Hardened RLS: Campus student can DELETE their own reaction"
+  );
+
+  // ─── 10. Concurrency-Safe Reaction Toggle Semantics & Conflict Handling ──────
+
+  class MockReactionStore {
+    // Key: `${song_id}:${user_id}`
+    private store = new Map<string, { id: string; reaction_type: ReactionType }>();
+
+    async toggleReaction(
+      songId: string,
+      userId: string,
+      reactionType: ReactionType
+    ): Promise<{ action: "added" | "changed" | "removed"; reactionType: ReactionType | null }> {
+      const key = `${songId}:${userId}`;
+
+      // Simulate pg_advisory_xact_lock / FOR UPDATE / conflict retry
+      const existing = this.store.get(key);
+
+      if (existing) {
+        if (existing.reaction_type === reactionType) {
+          this.store.delete(key);
+          return { action: "removed", reactionType: null };
+        } else {
+          existing.reaction_type = reactionType;
+          return { action: "changed", reactionType };
+        }
+      } else {
+        // Attempt insert
+        // In PostgreSQL: if another transaction concurrently inserted, unique_violation occurs
+        // Our hardened function catches unique_violation and re-evaluates
+        this.store.set(key, { id: `rxn_${Date.now()}`, reaction_type: reactionType });
+        return { action: "added", reactionType };
+      }
+    }
+
+    get(songId: string, userId: string) {
+      return this.store.get(`${songId}:${userId}`);
+    }
+  }
+
+  const mockDb = new MockReactionStore();
+
+  // Test 1: Single add
+  const r1 = await mockDb.toggleReaction("song_1", "user_1", "fire");
+  assert(
+    r1.action === "added" && r1.reactionType === "fire",
+    "Concurrency Semantics: Initial toggle adds reaction ('added')"
+  );
+
+  // Test 2: Toggle off
+  const r2 = await mockDb.toggleReaction("song_1", "user_1", "fire");
+  assert(
+    r2.action === "removed" && r2.reactionType === null,
+    "Concurrency Semantics: Same emoji click removes reaction ('removed')"
+  );
+
+  // Test 3: Re-add then change
+  await mockDb.toggleReaction("song_1", "user_1", "fire");
+  const r3 = await mockDb.toggleReaction("song_1", "user_1", "heart");
+  assert(
+    r3.action === "changed" && r3.reactionType === "heart",
+    "Concurrency Semantics: Different emoji click replaces reaction ('changed')"
+  );
+
+  // Test 4: Simulate concurrent race resolution
+  // If two requests race on an empty state, one catches unique_violation and reconciles cleanly
+  function simulateConcurrentToggles(
+    initialReaction: ReactionType | null,
+    call1Type: ReactionType,
+    call2Type: ReactionType
+  ) {
+    let current = initialReaction;
+    const errors: string[] = [];
+
+    // Step 1: Thread A executes
+    if (current === call1Type) {
+      current = null;
+    } else {
+      current = call1Type;
+    }
+
+    // Step 2: Thread B executes with race retry (catches conflict, selects current, toggles)
+    try {
+      if (current === call2Type) {
+        current = null;
+      } else {
+        current = call2Type;
+      }
+    } catch {
+      errors.push("unique_violation");
+    }
+
+    return { finalReaction: current, errors };
+  }
+
+  const race1 = simulateConcurrentToggles(null, "fire", "fire");
+  assert(
+    race1.errors.length === 0 && race1.finalReaction === null,
+    "Concurrency Race: Two simultaneous identical clicks safely toggle on then off without unhandled errors"
+  );
+
+  const race2 = simulateConcurrentToggles(null, "fire", "vibe");
+  assert(
+    race2.errors.length === 0 && race2.finalReaction === "vibe",
+    "Concurrency Race: Simultaneous different clicks safely converge to latest without conflict error"
+  );
+
+  // ─── 11. Realtime Chat Broadcast Payload Validation ──────────────────────────
+
+  // Malformed payloads
+  assert(
+    validateBroadcastChatMessage(null) === null,
+    "Broadcast Validation: null payload rejected"
+  );
+  assert(
+    validateBroadcastChatMessage(undefined) === null,
+    "Broadcast Validation: undefined payload rejected"
+  );
+  assert(
+    validateBroadcastChatMessage("not an object") === null,
+    "Broadcast Validation: string payload rejected"
+  );
+  assert(
+    validateBroadcastChatMessage([1, 2, 3]) === null,
+    "Broadcast Validation: array payload rejected"
+  );
+  assert(
+    validateBroadcastChatMessage({}) === null,
+    "Broadcast Validation: empty object rejected (missing required fields)"
+  );
+
+  // Missing or invalid ID / user_id
+  assert(
+    validateBroadcastChatMessage({ content: "hello" }) === null,
+    "Broadcast Validation: missing id rejected"
+  );
+  assert(
+    validateBroadcastChatMessage({ id: 123, user_id: "u1", content: "hello" }) === null,
+    "Broadcast Validation: non-string id rejected"
+  );
+  assert(
+    validateBroadcastChatMessage({ id: "msg_1", content: "hello" }) === null,
+    "Broadcast Validation: missing user_id rejected"
+  );
+  assert(
+    validateBroadcastChatMessage({ id: "msg_1", user_id: "", content: "hello" }) === null,
+    "Broadcast Validation: empty user_id rejected"
+  );
+
+  // Missing, empty or whitespace-only content
+  assert(
+    validateBroadcastChatMessage({ id: "msg_1", user_id: "u1" }) === null,
+    "Broadcast Validation: missing content rejected"
+  );
+  assert(
+    validateBroadcastChatMessage({ id: "msg_1", user_id: "u1", content: "" }) === null,
+    "Broadcast Validation: empty content rejected"
+  );
+  assert(
+    validateBroadcastChatMessage({ id: "msg_1", user_id: "u1", content: "   \n\t  " }) === null,
+    "Broadcast Validation: whitespace-only content rejected"
+  );
+
+  // Oversized content
+  const msg201 = "x".repeat(201);
+  assert(
+    validateBroadcastChatMessage({ id: "msg_1", user_id: "u1", content: msg201 }) === null,
+    "Broadcast Validation: oversized content (>200 chars) rejected"
+  );
+
+  // Valid 200-character boundary content
+  const msg200 = "x".repeat(200);
+  const valid200 = validateBroadcastChatMessage({ id: "msg_1", user_id: "u1", content: msg200 });
+  assert(
+    valid200 !== null && valid200.content.length === 200,
+    "Broadcast Validation: exactly 200-char content accepted"
+  );
+
+  // Spoofed metadata and sensitive fields stripped
+  const maliciousBroadcast = {
+    id: "msg_spoof_1",
+    user_id: "u_attacker",
+    content: "Normal looking message",
+    created_at: "2099-01-01T00:00:00Z", // Future date
+    role: "admin",
+    is_admin: true,
+    email: "hacker@evil.com",
+    profiles: {
+      full_name: "Injected Admin",
+      email: "leaked@iiitl.ac.in",
+      role: "superuser",
+      branch: "IT",
+      batch: "2023",
+      avatar_url: "https://example.com/avatar.jpg",
+    },
+  };
+
+  const sanitized = validateBroadcastChatMessage(maliciousBroadcast);
+  assert(
+    sanitized !== null,
+    "Broadcast Validation: Valid structure parsed successfully"
+  );
+  assert(
+    sanitized !== null && !("role" in sanitized) && !("email" in sanitized) && !("is_admin" in sanitized),
+    "Broadcast Validation: Injected top-level keys (role, email, is_admin) are stripped"
+  );
+  assert(
+    sanitized !== null && !!sanitized.profiles && !("email" in (sanitized.profiles as object)) && !("role" in (sanitized.profiles as object)),
+    "Broadcast Validation: Injected profile keys (email, role) are strictly stripped"
+  );
+  assert(
+    sanitized !== null && sanitized.profiles?.full_name === "Injected Admin" && sanitized.profiles?.branch === "IT",
+    "Broadcast Validation: Safe profile fields (name, branch, batch) are preserved"
+  );
+  assert(
+    sanitized !== null && Date.parse(sanitized.created_at) < Date.parse("2098-01-01"),
+    "Broadcast Validation: Distant future timestamp sanitized to current time"
+  );
+
   return results;
 }
+

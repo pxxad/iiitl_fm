@@ -15,6 +15,7 @@ import type {
   ReactionType,
   Profile,
 } from "@/lib/types";
+import { validateBroadcastChatMessage } from "./validation";
 
 export interface EmojiBurst {
   id: string;
@@ -317,12 +318,13 @@ export function useLiveRoom({ currentSongId, user, profile }: UseLiveRoomProps) 
           }));
         }
       })
-      .on("broadcast", { event: "chat_message" }, ({ payload }: { payload: ChatMessage }) => {
-        if (payload?.id) {
+      .on("broadcast", { event: "chat_message" }, ({ payload }: { payload: unknown }) => {
+        const validated = validateBroadcastChatMessage(payload);
+        if (validated) {
           setMessages((prev) => {
             // Deduplicate incoming message
-            if (prev.some((m) => m.id === payload.id)) return prev;
-            return [...prev, payload];
+            if (prev.some((m) => m.id === validated.id)) return prev;
+            return [...prev, validated];
           });
         }
       })

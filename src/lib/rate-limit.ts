@@ -1,6 +1,26 @@
 /**
  * In-memory sliding window and cooldown rate-limiter for server route handlers.
- * Prevents spam across reaction toggles and live chat messages.
+ * Prevents rapid spam across reaction toggles and live chat messages for a single instance.
+ *
+ * ARCHITECTURAL LIMITATION & PRODUCTION RECOMMENDATION:
+ * ----------------------------------------------------
+ * 1. Per-Instance Scope:
+ *    This rate-limiter maintains state in a local Node.js process Map (`rateLimitStore`).
+ *    In multi-instance serverless deployments (such as Vercel Edge/Serverless functions,
+ *    multi-region clusters, or auto-scaled containers), each cold-start instance maintains
+ *    its own memory space. Requests from the same client routed to different instances
+ *    or regions will not share state, making this an approximate first-line defense rather
+ *    than a globally synchronized limit.
+ *
+ * 2. Authoritative Database Backstop:
+ *    Hard security invariants must always be enforced at the database level:
+ *    - `uq_one_reaction_per_user_per_song` ensures at most 1 reaction per student per song.
+ *    - Strict RLS policies and atomic transaction locks prevent data tampering.
+ *
+ * 3. Recommended Production Scaling:
+ *    For production multi-region deployments requiring strict global rate enforcement,
+ *    replace this in-memory store with a shared low-latency Redis service (e.g. Upstash Redis,
+ *    Redis Cloud, or AWS ElastiCache) using an atomic sliding-window script or token bucket.
  */
 
 interface RateLimitRecord {
