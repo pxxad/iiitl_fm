@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { format, formatDistanceToNow } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
+import { extractYouTubeId } from "./youtube";
 
 /** Merge Tailwind classes safely, resolving conflicts. */
 export function cn(...inputs: ClassValue[]): string {
@@ -39,23 +40,10 @@ export function formatDuration(seconds: number): string {
 
 /** Extract a YouTube video ID from common URL formats. Returns null if invalid. */
 export function extractYouTubeVideoId(url: string): string | null {
-  try {
-    const cleaned = url.trim();
-    // youtu.be/VIDEO_ID
-    const shortMatch = cleaned.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-    if (shortMatch) return shortMatch[1];
-    // youtube.com/watch?v=VIDEO_ID or embed/VIDEO_ID or shorts/VIDEO_ID
-    const longMatch = cleaned.match(
-      /youtube\.com\/(?:watch\?v=|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/
-    );
-    if (longMatch) return longMatch[1];
-    return null;
-  } catch {
-    return null;
-  }
+  return extractYouTubeId(url);
 }
 
 /** Validate that a string is a safe YouTube video ID (11 alphanumeric chars). */
 export function isValidYouTubeVideoId(id: string): boolean {
-  return /^[a-zA-Z0-9_-]{11}$/.test(id);
+  return /^[a-zA-Z0-9_\-]{11}$/.test(id.trim());
 }
