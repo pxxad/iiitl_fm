@@ -3,7 +3,7 @@ import { getCampusUser } from "@/lib/auth/server";
 import { createClient } from "@/lib/supabase/server";
 import { extractYouTubeId, fetchYouTubeMetadata } from "@/lib/youtube";
 import { todayInIST } from "@/lib/utils";
-import { MAX_MESSAGE_LENGTH, MOOD_TAGS } from "@/lib/constants";
+import { MAX_MESSAGE_LENGTH, MAX_SONGS_PER_QUEUE, MOOD_TAGS } from "@/lib/constants";
 import type { MoodTag } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = await createClient();
 
-  // ─── 4. Attempt Atomic RPC Submission First (Migration 005) ────────────────
+  // ─── 4. Attempt Atomic RPC Submission First (Migrations 005 & 006) ────────
   try {
     const { data: rpcData, error: rpcError } = await supabase.rpc(
       "submit_song_for_today",
@@ -112,13 +112,26 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check for specific application errors returned by the RPC
     if (rpcError) {
       const errMsg = rpcError.message || "";
-      if (
-        errMsg.includes("already submitted a song for today") ||
-        rpcError.code === "23505"
-      ) {
+
+      // Authorization failure
+      if (rpcError.code === "42501" || errMsg.includes("Unauthorized")) {
+        return NextResponse.json({ error: errMsg }, { status: 403 });
+      }
+
+      // Invalid parameter
+      if (rpcError.code === "22023") {
+        return NextResponse.json({ error: errMsg }, { status: 400 });
+      }
+
+      // Queue capacity reached
+      if (rpcError.code === "54000" || errMsg.includes("queue is full")) {
+        return NextResponse.json({ error: errMsg }, { status: 409 });
+      }
+
+      // Duplicate submission checks
+      if (rpcError.code === "23505" || errMsg.includes("already")) {
         if (errMsg.includes("already been submitted to today's queue")) {
           return NextResponse.json(
             {
@@ -137,17 +150,20 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // If RPC doesn't exist yet (function not found 42883), fallback to direct query path
+      // Only if the function does not exist (undefined_function 42883) do we fall back
       if (rpcError.code !== "42883") {
-        console.warn("[Submit Song] RPC returned error, using fallback:", rpcError);
+        console.error("[Submit Song] RPC execution error:", rpcError);
+        return NextResponse.json(
+          { error: `Database error: ${errMsg}` },
+          { status: 500 }
+        );
       }
     }
   } catch (err) {
-    console.warn("[Submit Song] RPC attempt failed, proceeding to query fallback:", err);
+    console.warn("[Submit Song] RPC failed with exception, checking fallback:", err);
   }
 
-  // ─── 5. Fallback Direct Query Path ─────────────────────────────────────────
-  // Derives the current date in Asia/Kolkata strictly server-side
+  // ─── 5. Fallback Direct Query Path (If RPC not yet installed) ──────────────
   const todayIST = todayInIST();
 
   // A. Ensure today's queue exists
@@ -168,7 +184,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (createQueueError) {
-      // Could be race condition, retry fetch
+      // Possible race condition, retry fetch
       const { data: retryQueue } = await supabase
         .from("daily_queues")
         .select("id")
@@ -187,7 +203,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // B. Check if this student already submitted a song to today's queue
+  // B. Check queue capacity (Max 50 songs)
+  const { count: songCount } = await supabase
+    .from("songs")
+    .select("*", { count: "exact", head: true })
+    .eq("queue_id", queueId);
+
+  if (songCount !== null && songCount >= MAX_SONGS_PER_QUEUE) {
+    return NextResponse.json(
+      {
+        error: `Today's queue is full (maximum ${MAX_SONGS_PER_QUEUE} songs reached). Submissions reopen tomorrow at 12:00 AM IST.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  // C. Check if this student already submitted a song to today's queue
   const { data: userSubmission } = await supabase
     .from("songs")
     .select("id")
@@ -205,7 +236,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // C. Check if video already exists in today's queue
+  // D. Check if video already exists in today's queue
   const { data: videoDuplicate } = await supabase
     .from("songs")
     .select("id")
@@ -223,7 +254,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // D. Calculate next queue position
+  // E. Calculate next queue position
   const { data: lastSong } = await supabase
     .from("songs")
     .select("position")
@@ -234,7 +265,7 @@ export async function POST(request: NextRequest) {
 
   const nextPosition = (lastSong?.position ?? 0) + 1;
 
-  // E. Insert song
+  // F. Insert song into daily queue
   const { data: insertedSong, error: insertError } = await supabase
     .from("songs")
     .insert({
@@ -254,7 +285,7 @@ export async function POST(request: NextRequest) {
 
   if (insertError) {
     if (insertError.code === "23505") {
-      if (insertError.message?.includes("video")) {
+      if (insertError.message?.includes("video") || insertError.details?.includes("video_id")) {
         return NextResponse.json(
           {
             error:

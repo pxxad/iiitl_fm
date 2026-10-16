@@ -1,9 +1,9 @@
 import { extractYouTubeId } from "../youtube";
 import { todayInIST } from "../utils";
 import { isCampusEmail } from "../auth/domain-guard";
-import { MOOD_TAGS, MAX_MESSAGE_LENGTH } from "../constants";
+import { MOOD_TAGS, MAX_MESSAGE_LENGTH, MAX_SONGS_PER_QUEUE } from "../constants";
 
-export function runPhase3Tests() {
+export async function runPhase3Tests() {
   const results: Array<{ test: string; passed: boolean; error?: string }> = [];
 
   function assert(condition: boolean, testName: string) {
@@ -94,83 +94,124 @@ export function runPhase3Tests() {
 
   // ─── 5. Message Length Constraints ────────────────────────────────────────
   assert(MAX_MESSAGE_LENGTH === 280, "MAX_MESSAGE_LENGTH is exactly 280 characters");
+  assert(MAX_SONGS_PER_QUEUE === 50, "MAX_SONGS_PER_QUEUE is exactly 50 songs");
 
-  // ─── 6. Duplicate & One-Per-Day Simulation ────────────────────────────────
-  type MockSubmission = {
+  // ─── 6. Concurrency & Queue Invariants Simulation ─────────────────────────
+  type QueuedSong = {
+    id: string;
     userId: string;
     videoId: string;
+    position: number;
     date: string;
   };
 
-  const queue: MockSubmission[] = [];
+  class ConcurrentQueueSimulator {
+    private songs: QueuedSong[] = [];
+    private lock = false;
 
-  function simulateSubmit(sub: MockSubmission): { ok: boolean; reason?: string } {
-    if (!isCampusEmail(sub.userId)) {
-      return { ok: false, reason: "Unauthorized domain" };
+    // Simulates Postgres row-lock transaction behavior
+    async submit(userId: string, videoId: string, date: string): Promise<{ ok: boolean; reason?: string; position?: number }> {
+      // Simulate random microsecond latency before transaction acquires lock
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 5));
+
+      // Acquire lock on daily queue row (FOR UPDATE)
+      while (this.lock) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+      this.lock = true;
+
+      try {
+        if (!isCampusEmail(userId)) {
+          return { ok: false, reason: "Unauthorized domain" };
+        }
+
+        // Capacity check
+        if (this.songs.length >= MAX_SONGS_PER_QUEUE) {
+          return { ok: false, reason: "Queue is full" };
+        }
+
+        // Duplicate user check
+        if (this.songs.some((s) => s.userId === userId && s.date === date)) {
+          return { ok: false, reason: "Duplicate user submission" };
+        }
+
+        // Duplicate video check
+        if (this.songs.some((s) => s.videoId === videoId && s.date === date)) {
+          return { ok: false, reason: "Duplicate video in queue" };
+        }
+
+        // Atomic position assignment
+        const position = this.songs.length + 1;
+        this.songs.push({
+          id: `song-${position}`,
+          userId,
+          videoId,
+          position,
+          date,
+        });
+
+        return { ok: true, position };
+      } finally {
+        this.lock = false;
+      }
     }
-    const userAlreadySubmitted = queue.some(
-      (s) => s.userId === sub.userId && s.date === sub.date
-    );
-    if (userAlreadySubmitted) {
-      return { ok: false, reason: "Duplicate user submission for date" };
+
+    getSongs() {
+      return [...this.songs];
     }
-    const videoAlreadyQueued = queue.some(
-      (s) => s.videoId === sub.videoId && s.date === sub.date
-    );
-    if (videoAlreadyQueued) {
-      return { ok: false, reason: "Duplicate video in queue for date" };
-    }
-    queue.push(sub);
-    return { ok: true };
   }
 
-  // Student 1 submits Video A on Date 1
-  const sub1 = simulateSubmit({
-    userId: "lit2023001@iiitl.ac.in",
-    videoId: "dQw4w9WgXcQ",
-    date: istDate,
-  });
-  assert(sub1.ok, "Student 1 submits Video A successfully");
-
-  // Student 1 attempts repeat submission on same Date 1 -> REJECT
-  const sub1Repeat = simulateSubmit({
-    userId: "lit2023001@iiitl.ac.in",
-    videoId: "differentId1",
-    date: istDate,
-  });
+  // TEST A: 5 simultaneous submissions by the SAME user
+  const sim1 = new ConcurrentQueueSimulator();
+  const sameUserPromises = [1, 2, 3, 4, 5].map((i) =>
+    sim1.submit("lit2023001@iiitl.ac.in", `vid${i}1234567`, istDate)
+  );
+  const sameUserResults = await Promise.all(sameUserPromises);
+  const sameUserSuccesses = sameUserResults.filter((r) => r.ok);
+  const sameUserFailures = sameUserResults.filter((r) => !r.ok);
   assert(
-    !sub1Repeat.ok && sub1Repeat.reason === "Duplicate user submission for date",
-    "Repeat submission by Student 1 rejected on same day"
+    sameUserSuccesses.length === 1 && sameUserFailures.length === 4,
+    "Concurrency: Exactly 1 submission succeeds for simultaneous requests by same user"
   );
 
-  // Student 2 attempts to queue same Video A on Date 1 -> REJECT
-  const sub2DuplicateVideo = simulateSubmit({
-    userId: "bcs2024012@iiitl.ac.in",
-    videoId: "dQw4w9WgXcQ",
-    date: istDate,
-  });
+  // TEST B: 5 simultaneous submissions of the SAME video by DIFFERENT users
+  const sim2 = new ConcurrentQueueSimulator();
+  const sameVideoPromises = [1, 2, 3, 4, 5].map((i) =>
+    sim2.submit(`lit202300${i}@iiitl.ac.in`, "dQw4w9WgXcQ", istDate)
+  );
+  const sameVideoResults = await Promise.all(sameVideoPromises);
+  const sameVideoSuccesses = sameVideoResults.filter((r) => r.ok);
+  const sameVideoFailures = sameVideoResults.filter((r) => !r.ok);
   assert(
-    !sub2DuplicateVideo.ok && sub2DuplicateVideo.reason === "Duplicate video in queue for date",
-    "Duplicate video rejected within same daily queue"
+    sameVideoSuccesses.length === 1 && sameVideoFailures.length === 4,
+    "Concurrency: Exactly 1 submission succeeds for simultaneous submissions of same video"
   );
 
-  // Student 2 queues Video B on Date 1 -> ALLOW
-  const sub2 = simulateSubmit({
-    userId: "bcs2024012@iiitl.ac.in",
-    videoId: "differentId2",
-    date: istDate,
-  });
-  assert(sub2.ok, "Student 2 submits Video B successfully");
-
-  // Non-campus student attempts submission -> REJECT
-  const subNonCampus = simulateSubmit({
-    userId: "stranger@gmail.com",
-    videoId: "differentId3",
-    date: istDate,
-  });
+  // TEST C: 10 concurrent submissions by 10 different students -> unique sequential positions
+  const sim3 = new ConcurrentQueueSimulator();
+  const concurrentPromises = Array.from({ length: 10 }, (_, i) =>
+    sim3.submit(`lit20240${i.toString().padStart(2, "0")}@iiitl.ac.in`, `uniqVid${i.toString().padStart(4, "0")}`, istDate)
+  );
+  const concurrentResults = await Promise.all(concurrentPromises);
+  const allSucceeded = concurrentResults.every((r) => r.ok);
+  const positions = concurrentResults.map((r) => r.position!).sort((a, b) => a - b);
+  const expectedPositions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const positionsMatch = JSON.stringify(positions) === JSON.stringify(expectedPositions);
   assert(
-    !subNonCampus.ok && subNonCampus.reason === "Unauthorized domain",
-    "Non-campus email submission rejected"
+    allSucceeded && positionsMatch,
+    "Concurrency: 10 concurrent student submissions receive strictly consecutive unique positions 1..10"
+  );
+
+  // TEST D: Queue capacity limit (50 songs maximum)
+  const sim4 = new ConcurrentQueueSimulator();
+  // Fill 50 songs
+  for (let i = 1; i <= 50; i++) {
+    await sim4.submit(`stud${i.toString().padStart(3, "0")}@iiitl.ac.in`, `vid${i.toString().padStart(8, "0")}`, istDate);
+  }
+  const attempt51 = await sim4.submit("stud051@iiitl.ac.in", "vid05112345", istDate);
+  assert(
+    !attempt51.ok && attempt51.reason === "Queue is full",
+    "Capacity: 51st submission rejected when daily queue reaches MAX_SONGS_PER_QUEUE (50)"
   );
 
   return results;
