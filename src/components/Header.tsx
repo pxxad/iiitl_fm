@@ -103,10 +103,10 @@ export function Header() {
                 aria-haspopup="true"
               >
                 <div className="flex flex-col text-right">
-                  <span className="text-xs font-semibold text-slate-800 leading-tight max-w-[120px] truncate">
+                  <span className="text-xs font-semibold text-slate-800 leading-tight max-w-[80px] sm:max-w-[120px] truncate">
                     {displayName}
                   </span>
-                  <span className="text-[10px] text-indigo-600 font-medium">
+                  <span className="text-[10px] text-indigo-600 font-medium hidden sm:block">
                     {profile?.branch ? profile.branch : "IIITL Student"}
                   </span>
                 </div>

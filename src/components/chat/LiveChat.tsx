@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { MAX_CHAT_MESSAGE_LENGTH } from "@/lib/constants";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, UserRole } from "@/lib/types";
+import { ReportModal } from "@/components/moderation/ReportModal";
 
 interface LiveChatProps {
   messages: ChatMessage[];
@@ -11,6 +12,8 @@ interface LiveChatProps {
   isSending: boolean;
   cooldownRemaining: number;
   isCampusUser: boolean;
+  userRole?: UserRole;
+  onHideMessage?: (messageId: string) => Promise<void>;
 }
 
 export function LiveChat({
@@ -19,10 +22,34 @@ export function LiveChat({
   isSending,
   cooldownRemaining,
   isCampusUser,
+  userRole,
+  onHideMessage,
 }: LiveChatProps) {
   const [input, setInput] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [reportingMessage, setReportingMessage] = useState<ChatMessage | null>(null);
+  const isModerator = userRole === "moderator" || userRole === "admin";
+
+  const handleHide = async (msgId: string) => {
+    if (!confirm("Are you sure you want to remove this message as a campus moderator?")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/moderation/hide-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: msgId, reason: "Moderator removed message" }),
+      });
+
+      if (res.ok && onHideMessage) {
+        await onHideMessage(msgId);
+      }
+    } catch (err) {
+      console.error("[LiveChat] Failed to hide message:", err);
+    }
+  };
 
   // Auto-scroll to bottom on new message
   useEffect(() => {
@@ -53,7 +80,7 @@ export function LiveChat({
   const charsRemaining = MAX_CHAT_MESSAGE_LENGTH - input.length;
 
   return (
-    <div className="flex flex-col h-[480px] rounded-3xl bg-slate-900/90 backdrop-blur-xl border border-white/10 shadow-xl overflow-hidden">
+    <div className="flex flex-col h-[380px] sm:h-[440px] md:h-[480px] rounded-3xl bg-slate-900/90 backdrop-blur-xl border border-white/10 shadow-xl overflow-hidden">
       {/* ─── Chat Header ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-slate-950/40">
         <div className="flex items-center gap-2">
@@ -88,7 +115,7 @@ export function LiveChat({
                 key={msg.id}
                 className="group flex flex-col items-start gap-1 text-xs"
               >
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-center gap-1.5 w-full flex-wrap">
                   <span className="font-semibold text-indigo-300">
                     {displayName}
                   </span>
@@ -103,6 +130,29 @@ export function LiveChat({
                       minute: "2-digit",
                     })}
                   </span>
+                  {/* Action buttons (Report / Moderate) — Touch friendly and accessible on mobile */}
+                  <div className="opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center gap-1.5 ml-auto touch-manipulation">
+                    {isCampusUser && (
+                      <button
+                        type="button"
+                        onClick={() => setReportingMessage(msg)}
+                        title="Report this message"
+                        className="text-xs text-slate-400 hover:text-rose-400 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded active:bg-white/10"
+                      >
+                        🚩
+                      </button>
+                    )}
+                    {isModerator && (
+                      <button
+                        type="button"
+                        onClick={() => handleHide(msg.id)}
+                        title="Delete message (Moderator)"
+                        className="text-xs text-slate-400 hover:text-amber-400 p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center rounded active:bg-white/10"
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {/* Safe text rendering: React automatically escapes HTML to prevent XSS */}
                 <div className="px-3 py-2 rounded-2xl rounded-tl-sm bg-white/5 border border-white/5 text-slate-200 break-words max-w-full leading-relaxed">
@@ -115,6 +165,17 @@ export function LiveChat({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* ─── Reporting Modal ──────────────────────────────────────────────── */}
+      {reportingMessage && (
+        <ReportModal
+          isOpen={!!reportingMessage}
+          onClose={() => setReportingMessage(null)}
+          targetType="chat_message"
+          targetId={reportingMessage.id}
+          targetTitle={reportingMessage.content}
+        />
+      )}
+
       {/* ─── Error Notification ────────────────────────────────────────────── */}
       {errorMessage && (
         <div className="px-4 py-1.5 bg-rose-500/10 border-t border-rose-500/20 text-rose-300 text-[11px] flex items-center justify-between">
@@ -122,7 +183,7 @@ export function LiveChat({
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="text-xs font-bold hover:text-white"
+            className="text-xs font-bold hover:text-white p-1"
           >
             ✕
           </button>
@@ -145,7 +206,7 @@ export function LiveChat({
                     : "Say something to campus..."
                 }
                 disabled={isSending || cooldownRemaining > 0}
-                className="flex-1 px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-all"
+                className="flex-1 px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 transition-all"
               />
               <button
                 type="submit"
@@ -155,7 +216,7 @@ export function LiveChat({
                   cooldownRemaining > 0 ||
                   input.length > MAX_CHAT_MESSAGE_LENGTH
                 }
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 transition-all shadow-sm shrink-0"
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:hover:bg-indigo-600 transition-all shadow-sm shrink-0 min-h-[42px] min-w-[56px] flex items-center justify-center touch-manipulation active:scale-95"
               >
                 {isSending ? "..." : "Send"}
               </button>
@@ -175,11 +236,11 @@ export function LiveChat({
             </div>
           </form>
         ) : (
-          <div className="flex items-center justify-between gap-3 p-2 rounded-xl bg-white/5 border border-white/5 text-xs text-slate-300">
+          <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs text-slate-300 min-h-[44px]">
             <span>🔒 Sign in with @iiitl.ac.in to chat</span>
             <Link
               href="/login"
-              className="px-2.5 py-1 rounded-lg text-[11px] font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shrink-0"
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shrink-0 min-h-[36px] flex items-center justify-center touch-manipulation"
             >
               Sign In
             </Link>

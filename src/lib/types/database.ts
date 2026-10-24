@@ -14,7 +14,17 @@ export type QueueStatus = "pending" | "active" | "archived";
 
 export type MoodTag = "happy" | "chill" | "study" | "gym" | "rain" | "late_night";
 
+export type UserRole = "student" | "moderator" | "admin";
+
 export type ReactionType = "fire" | "heart" | "cry" | "vibe" | "skip_this";
+
+export type ReportReason =
+  | "offensive_content"
+  | "hate_speech"
+  | "copyright"
+  | "spam"
+  | "harassment"
+  | "other";
 
 // ─── Database Row Types ────────────────────────────────────────────────────────
 
@@ -24,6 +34,7 @@ export interface Profile {
   avatar_url: string | null;
   branch: string | null;
   batch: string | null;
+  role?: UserRole;
   created_at: string;
 }
 
@@ -47,6 +58,7 @@ export interface Song {
   position: number;
   duration_seconds: number | null;
   status: SongStatus;
+  is_hidden?: boolean;
   created_at: string;
   started_at: string | null;
 }
@@ -82,6 +94,37 @@ export interface DailyStats {
   top_artist: string | null;
 }
 
+export interface Report {
+  id: string;
+  reporter_id: string;
+  target_type: "song" | "chat_message";
+  target_id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: "pending" | "reviewed" | "actioned" | "dismissed";
+  created_at: string;
+}
+
+export interface ModerationAction {
+  id: string;
+  moderator_id: string;
+  action_type: "hide_chat" | "skip_song" | "dismiss_report";
+  target_type: "song" | "chat_message";
+  target_id: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface SkipVoteResult {
+  song_id: string;
+  voted: boolean;
+  total_votes: number;
+  threshold: number;
+  advanced: boolean;
+  error?: string;
+  message?: string;
+}
+
 // ─── Extended / joined types ──────────────────────────────────────────────────
 
 /** Song joined with the submitter's profile. */
@@ -97,6 +140,7 @@ export interface ChatMessage {
   id: string;
   user_id: string;
   content: string;
+  is_hidden?: boolean;
   created_at: string;
   profiles?: Pick<Profile, "full_name" | "avatar_url" | "branch" | "batch"> | null;
 }

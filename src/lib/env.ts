@@ -12,6 +12,38 @@ const supabaseAnonKey =
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
+/** Checks whether Supabase has been configured with real, non-placeholder credentials. */
+export function isSupabaseConfigured(
+  customUrl?: string,
+  customKey?: string
+): boolean {
+  const url = customUrl !== undefined ? customUrl : process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = customKey !== undefined ? customKey : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) return false;
+  if (
+    url.includes("placeholder.supabase.co") ||
+    url.includes("your-project-id") ||
+    url.trim() === ""
+  ) {
+    return false;
+  }
+  if (
+    anonKey.includes("placeholder") ||
+    anonKey.includes("your-anon-key") ||
+    anonKey.trim() === ""
+  ) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    if (!parsed.protocol.startsWith("http")) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 /** Server-only environment variables. Never expose to the browser. */
 export const serverEnv = {
   SUPABASE_SERVICE_ROLE_KEY: () => {
@@ -31,4 +63,6 @@ export const publicEnv = {
   NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
   NEXT_PUBLIC_SITE_URL: siteUrl,
+  isConfigured: isSupabaseConfigured(supabaseUrl, supabaseAnonKey),
 } as const;
+

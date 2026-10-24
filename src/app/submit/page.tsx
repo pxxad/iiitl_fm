@@ -261,7 +261,7 @@ export default function SubmitPage() {
                   value={videoUrl}
                   onChange={(e) => setVideoUrl(e.target.value)}
                   placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
-                  className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm placeholder:text-slate-400 transition-all"
+                  className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-base sm:text-sm placeholder:text-slate-400 transition-all"
                   required
                 />
                 {isPreviewLoading && (
@@ -307,20 +307,20 @@ export default function SubmitPage() {
                   exit={{ opacity: 0, height: 0 }}
                   className="overflow-hidden"
                 >
-                  <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex items-center gap-4">
+                  <div className="p-3 sm:p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex items-center gap-3 sm:gap-4">
                     <img
                       src={previewMeta.thumbnailUrl}
                       alt={previewMeta.title}
-                      className="w-24 h-16 rounded-xl object-cover shadow-sm bg-slate-900 shrink-0"
+                      className="w-20 h-14 sm:w-24 sm:h-16 rounded-xl object-cover shadow-sm bg-slate-900 shrink-0"
                     />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">
                         Verified YouTube Video
                       </span>
-                      <h4 className="text-sm font-bold text-slate-900 truncate">
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                         {previewMeta.title}
                       </h4>
-                      <p className="text-xs text-slate-500 truncate mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-slate-500 truncate mt-0.5">
                         {previewMeta.artist}
                       </p>
                     </div>
@@ -334,7 +334,7 @@ export default function SubmitPage() {
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
                 2. Select Mood Tag
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-2.5">
                 {MOOD_TAGS.map((tag) => {
                   const isSelected = selectedMood === tag.value;
                   return (
@@ -342,7 +342,7 @@ export default function SubmitPage() {
                       key={tag.value}
                       type="button"
                       onClick={() => setSelectedMood(tag.value as MoodTag)}
-                      className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                      className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all min-h-[44px] touch-manipulation ${
                         isSelected
                           ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20 scale-[1.02]"
                           : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
@@ -383,7 +383,7 @@ export default function SubmitPage() {
                 maxLength={MAX_MESSAGE_LENGTH}
                 rows={2}
                 placeholder="e.g. Vibes for late night coding in CC3..."
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm placeholder:text-slate-400 transition-all resize-none"
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-base sm:text-sm placeholder:text-slate-400 transition-all resize-none"
               />
             </div>
 
@@ -391,7 +391,7 @@ export default function SubmitPage() {
             <button
               type="submit"
               disabled={isSubmitting || !previewMeta}
-              className="w-full py-4 px-6 rounded-2xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/25 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3.5 sm:py-4 px-6 rounded-2xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/25 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[48px] touch-manipulation"
             >
               {isSubmitting ? (
                 <>

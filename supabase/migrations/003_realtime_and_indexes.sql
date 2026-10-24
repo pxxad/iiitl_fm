@@ -8,10 +8,23 @@
 
 -- ─── Enable Realtime on tables ───────────────────────────────────────────────
 -- These tables need live updates pushed to connected clients.
-ALTER PUBLICATION supabase_realtime ADD TABLE public.playback_state;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.songs;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.reactions;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.skip_votes;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'playback_state') THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.playback_state;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'songs') THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.songs;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'reactions') THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.reactions;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'skip_votes') THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.skip_votes;
+    END IF;
+  END IF;
+END $$;
+
 
 
 -- ─── Additional composite indexes for query patterns ─────────────────────────

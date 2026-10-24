@@ -77,7 +77,7 @@ export function QueueList({
         return (
           <div
             key={song.id}
-            className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-2xl border transition-all ${
+            className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 sm:p-4 rounded-2xl border transition-all ${
               song.status === "playing"
                 ? "bg-gradient-to-r from-emerald-50/60 via-white to-white border-emerald-300 shadow-md shadow-emerald-500/5 ring-1 ring-emerald-400/30"
                 : isUserSong
@@ -86,14 +86,14 @@ export function QueueList({
             }`}
           >
             {/* Left: Thumbnail & Info */}
-            <div className="flex items-center gap-3.5 w-full sm:w-auto">
+            <div className="flex items-center gap-2.5 sm:gap-3.5 w-full sm:w-auto">
               {/* Position Number */}
-              <span className="font-extrabold text-sm text-slate-400 w-6 text-center shrink-0">
+              <span className="font-extrabold text-xs sm:text-sm text-slate-400 w-5 sm:w-6 text-center shrink-0">
                 {song.position || index + 1}
               </span>
 
               {/* Thumbnail */}
-              <div className="relative w-16 h-12 sm:w-20 sm:h-14 rounded-xl overflow-hidden bg-slate-900 shrink-0 shadow-sm">
+              <div className="relative w-14 h-10 sm:w-20 sm:h-14 rounded-xl overflow-hidden bg-slate-900 shrink-0 shadow-sm">
                 {song.thumbnail_url ? (
                   <img
                     src={song.thumbnail_url}
@@ -107,23 +107,23 @@ export function QueueList({
                 )}
                 {song.status === "playing" && (
                   <div className="absolute inset-0 bg-emerald-900/40 flex items-center justify-center">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                   </div>
                 )}
               </div>
 
               {/* Song Title & Submitter */}
               <div className="min-w-0 flex-1">
-                <h4 className="text-sm font-semibold text-slate-900 truncate">
+                <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
                   {song.title}
                 </h4>
-                <p className="text-xs text-slate-500 truncate mt-0.5">
+                <p className="text-[11px] sm:text-xs text-slate-500 truncate mt-0.5">
                   {song.artist || "Unknown Artist"}
                 </p>
 
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-1.5 flex-wrap">
                   {/* Submitter Name */}
-                  <span className="text-[11px] text-slate-600 font-medium flex items-center gap-1">
+                  <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium flex items-center gap-1">
                     <span>by</span>
                     <strong className="text-slate-800">
                       {isUserSong
@@ -131,7 +131,7 @@ export function QueueList({
                         : song.profiles?.full_name || "Campus Student"}
                     </strong>
                     {song.profiles?.branch && (
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                      <span className="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
                         {song.profiles.branch}
                       </span>
                     )}
@@ -139,7 +139,7 @@ export function QueueList({
 
                   {/* Mood Tag Badge */}
                   {moodObj && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                    <span className="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
                       <span>{moodObj.emoji}</span>
                       <span>{moodObj.label}</span>
                     </span>
@@ -148,7 +148,7 @@ export function QueueList({
 
                 {/* Message Quote */}
                 {song.message && (
-                  <p className="text-[11px] italic text-slate-500 mt-1.5 bg-slate-50/80 px-2 py-1 rounded-md border border-slate-100 max-w-md">
+                  <p className="text-[10px] sm:text-[11px] italic text-slate-500 mt-1 sm:mt-1.5 bg-slate-50/80 px-2 py-1 rounded-md border border-slate-100 max-w-md break-words">
                     &ldquo;{song.message}&rdquo;
                   </p>
                 )}
@@ -156,9 +156,9 @@ export function QueueList({
             </div>
 
             {/* Right: Status Pill */}
-            <div className="mt-3 sm:mt-0 flex items-center gap-2 self-end sm:self-center">
+            <div className="mt-2 sm:mt-0 flex items-center gap-2 self-end sm:self-center ml-7 sm:ml-0">
               <span
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${currentStatus.bg} ${currentStatus.text}`}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold border ${currentStatus.bg} ${currentStatus.text}`}
               >
                 {currentStatus.dot && (
                   <span className={`w-1.5 h-1.5 rounded-full ${currentStatus.dot}`} />

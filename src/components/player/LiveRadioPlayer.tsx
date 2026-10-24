@@ -74,7 +74,7 @@ export function LiveRadioPlayer({
   onPlaybackError,
 }: LiveRadioPlayerProps) {
   const playerRef = useRef<YTPlayerInstance | null>(null);
-  const containerId = useRef(`yt-player-${Math.random().toString(36).substring(2, 9)}`);
+  const containerId = useRef("yt-player-live-stream-target");
 
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -316,7 +316,7 @@ export function LiveRadioPlayer({
       )}
 
       {/* Main Player Display */}
-      <div className="p-6 sm:p-8 flex flex-col lg:flex-row items-center justify-between gap-6">
+      <div className="p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-6">
         {/* Left: Album Artwork / Video Thumbnail with YouTube IFrame Container */}
         <div className="relative w-44 h-28 sm:w-56 sm:h-36 rounded-2xl overflow-hidden bg-black shrink-0 border border-slate-800 shadow-inner group">
           {/* YouTube Video Target Element (Kept visible in DOM for YouTube TOS compliance) */}
@@ -362,10 +362,10 @@ export function LiveRadioPlayer({
         </div>
 
         {/* Center: Track Metadata */}
-        <div className="flex-1 min-w-0 text-center lg:text-left">
+        <div className="flex-1 min-w-0 w-full text-center lg:text-left">
           {activeSong ? (
             <>
-              <div className="flex items-center justify-center lg:justify-start gap-2 mb-2 flex-wrap">
+              <div className="flex items-center justify-center lg:justify-start gap-2 mb-1.5 flex-wrap">
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   Track #{activeSong.position}
                 </span>
@@ -381,15 +381,15 @@ export function LiveRadioPlayer({
                 </span>
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-extrabold text-white truncate tracking-tight">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-extrabold text-white truncate tracking-tight">
                 {activeSong.title}
               </h2>
-              <p className="text-sm text-slate-400 truncate mt-1">
+              <p className="text-xs sm:text-sm text-slate-400 truncate mt-0.5 sm:mt-1">
                 {activeSong.artist || "Unknown Artist"}
               </p>
 
               {/* Submitter Credit */}
-              <div className="mt-3 flex items-center justify-center lg:justify-start gap-2">
+              <div className="mt-2 sm:mt-3 flex items-center justify-center lg:justify-start gap-1.5 flex-wrap">
                 <span className="text-xs text-slate-400">Selected by</span>
                 <span className="text-xs font-semibold text-indigo-400">
                   {activeSong.submitter_name || activeSong.profiles?.full_name || "Campus Student"}
@@ -413,7 +413,7 @@ export function LiveRadioPlayer({
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700 mb-2">
                 Station Idle
               </span>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-lg sm:text-xl font-bold text-white">
                 Queue is Waiting for Next Track
               </h2>
               <p className="text-xs text-slate-400 mt-1">
@@ -424,11 +424,11 @@ export function LiveRadioPlayer({
         </div>
 
         {/* Right: Audio Volume & Controls */}
-        <div className="flex items-center gap-4 shrink-0">
+        <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t border-slate-800/80 sm:border-0">
           {/* Mute/Unmute Button */}
           <button
             onClick={onToggleMute}
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+            className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition-all touch-manipulation ${
               isMuted
                 ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
                 : "bg-slate-800 hover:bg-slate-700 text-white border border-slate-700"
@@ -449,14 +449,14 @@ export function LiveRadioPlayer({
           </button>
 
           {/* Volume Slider */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1 sm:flex-initial">
             <input
               type="range"
               min="0"
               max="100"
               value={isMuted ? 0 : volume}
               onChange={(e) => onVolumeChange(Number(e.target.value))}
-              className="w-20 sm:w-24 accent-indigo-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+              className="flex-1 sm:w-24 accent-indigo-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer touch-manipulation"
             />
             <span className="text-xs text-slate-400 w-7 text-right">
               {isMuted ? "0%" : `${volume}%`}

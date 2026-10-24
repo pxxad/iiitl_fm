@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth/context";
 import { Header } from "@/components/Header";
+import { BottomNav } from "@/components/BottomNav";
 
 export const metadata: Metadata = {
   title: {
@@ -34,6 +35,7 @@ export const viewport: Viewport = {
   themeColor: "#6366f1",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -58,7 +60,8 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white">
         <AuthProvider>
           <Header />
-          <div className="flex-1 flex flex-col">{children}</div>
+          <div className="flex-1 flex flex-col pb-20 md:pb-0">{children}</div>
+          <BottomNav />
         </AuthProvider>
       </body>
     </html>

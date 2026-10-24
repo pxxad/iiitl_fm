@@ -3,6 +3,7 @@
 import React, { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
+import { publicEnv } from "@/lib/env";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
@@ -10,28 +11,77 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const { signInWithGoogle, isLoading: authLoading } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const error = searchParams.get("error");
   const redirectTo = searchParams.get("redirectTo") || "/";
 
+  const isConfigured = publicEnv.isConfigured;
+
   const handleSignIn = async () => {
+    setLocalError(null);
+
+    if (!isConfigured) {
+      setLocalError(
+        "Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local."
+      );
+      return;
+    }
+
     try {
       setIsSigningIn(true);
       await signInWithGoogle(redirectTo);
     } catch (err) {
       console.error("[Login] Google OAuth launch failed:", err);
       setIsSigningIn(false);
+      setLocalError(
+        err instanceof Error
+          ? err.message
+          : "Failed to launch Google sign-in. Please try again."
+      );
     }
   };
 
   return (
     <div className="w-full max-w-md mx-auto">
+      {/* Missing or Placeholder Supabase Configuration Warning */}
+      {(!isConfigured || error === "config_missing") && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200/80 shadow-sm text-amber-900 text-left"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 mt-0.5 text-amber-700 font-bold">
+              ⚙️
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-amber-900">
+                Supabase Configuration Required
+              </h3>
+              <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                Authentication is unavailable because Supabase environment variables
+                are missing or using placeholders. Configure the following public variables
+                in your local <code className="px-1.5 py-0.5 bg-amber-100 rounded font-mono text-[11px] text-amber-900">.env.local</code> file:
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs font-mono text-amber-800 list-disc list-inside">
+                <li>NEXT_PUBLIC_SUPABASE_URL</li>
+                <li>NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
+              </ul>
+              <p className="text-[11px] text-amber-600 mt-2">
+                See <code className="font-mono text-[11px]">.env.local.example</code> for template instructions.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Error Alert Banners */}
       {error === "campus_access_only" && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200/80 shadow-sm text-rose-900"
+          className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200/80 shadow-sm text-rose-900 text-left"
         >
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-xl bg-rose-100 flex items-center justify-center shrink-0 mt-0.5 text-rose-600 font-bold">
@@ -52,18 +102,36 @@ function LoginContent() {
         </motion.div>
       )}
 
+      {error === "oauth_error" && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm text-amber-900 text-left"
+        >
+          <div className="flex items-start gap-3">
+            <span className="text-lg">⚠️</span>
+            <div>
+              <h3 className="text-sm font-semibold">Google Sign-in Cancelled</h3>
+              <p className="text-xs text-amber-700 mt-1">
+                The Google OAuth authorization was cancelled or could not be completed. Please try again.
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {error === "auth_failed" && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm text-amber-900"
+          className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm text-amber-900 text-left"
         >
           <div className="flex items-start gap-3">
             <span className="text-lg">⚠️</span>
             <div>
               <h3 className="text-sm font-semibold">Sign-in Incomplete</h3>
               <p className="text-xs text-amber-700 mt-1">
-                The sign-in process could not be completed. Please try again.
+                The sign-in process could not be completed. Please verify your connection and try again.
               </p>
             </div>
           </div>
@@ -74,11 +142,33 @@ function LoginContent() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm text-slate-800"
+          className="mb-6 p-4 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm text-slate-800 text-left"
         >
           <p className="text-xs text-slate-600">
             Authorization code was missing or expired. Please sign in again.
           </p>
+        </motion.div>
+      )}
+
+      {localError && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 shadow-sm text-rose-900 text-left"
+        >
+          <div className="flex items-start gap-3">
+            <span className="text-lg">⚠️</span>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold">Authentication Notice</h3>
+              <p className="text-xs text-rose-700 mt-1">{localError}</p>
+            </div>
+            <button
+              onClick={() => setLocalError(null)}
+              className="text-xs text-rose-500 hover:text-rose-800 font-semibold px-1"
+            >
+              ✕
+            </button>
+          </div>
         </motion.div>
       )}
 
@@ -87,15 +177,15 @@ function LoginContent() {
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
-        className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 sm:p-10 border border-slate-200/80 shadow-xl shadow-indigo-500/5 text-center relative overflow-hidden"
+        className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 sm:p-10 border border-slate-200/80 shadow-xl shadow-indigo-500/5 text-center relative overflow-hidden"
       >
         {/* Glow Accent */}
         <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Brand Icon */}
-        <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+        <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-5 sm:mb-6 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
           <svg
-            className="w-8 h-8 text-white"
+            className="w-7 h-7 sm:w-8 sm:h-8 text-white"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -109,14 +199,14 @@ function LoginContent() {
           </svg>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
           Welcome to{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
             IIITL FM
           </span>
         </h1>
 
-        <p className="mt-2 text-sm text-slate-600 max-w-sm mx-auto leading-relaxed">
+        <p className="mt-2 text-xs sm:text-sm text-slate-600 max-w-sm mx-auto leading-relaxed px-1">
           The shared live radio for the Indian Institute of Information
           Technology, Lucknow.
         </p>
@@ -128,11 +218,11 @@ function LoginContent() {
         </div>
 
         {/* OAuth Action Button */}
-        <div className="mt-8 space-y-4">
+        <div className="mt-7 sm:mt-8 space-y-4">
           <button
             onClick={handleSignIn}
-            disabled={isSigningIn || authLoading}
-            className="w-full flex items-center justify-center gap-3 py-3.5 px-5 rounded-2xl font-semibold text-sm bg-slate-900 hover:bg-slate-800 text-white shadow-md shadow-slate-900/10 active:scale-[0.99] transition-all disabled:opacity-70 disabled:cursor-not-allowed group"
+            disabled={isSigningIn || authLoading || !isConfigured}
+            className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl font-semibold text-xs sm:text-sm bg-slate-900 hover:bg-slate-800 text-white shadow-md shadow-slate-900/10 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed group min-h-[48px] touch-manipulation"
           >
             {isSigningIn ? (
               <>
@@ -157,6 +247,11 @@ function LoginContent() {
                   />
                 </svg>
                 Connecting with Google...
+              </>
+            ) : !isConfigured ? (
+              <>
+                <span className="text-amber-400">⚙️</span>
+                Supabase Setup Required
               </>
             ) : (
               <>

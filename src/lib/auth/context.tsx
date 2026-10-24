@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { publicEnv } from "@/lib/env";
 import type { User } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types";
 import { isCampusEmail } from "@/lib/auth/domain-guard";
@@ -45,6 +46,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true;
 
     async function initAuth() {
+      // If Supabase environment variables are missing or placeholders, avoid failing network requests
+      if (!publicEnv.isConfigured) {
+        if (isMounted) setIsLoading(false);
+        return;
+      }
+
       try {
         const {
           data: { session },
@@ -64,6 +71,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     initAuth();
+
+    if (!publicEnv.isConfigured) {
+      return () => {
+        isMounted = false;
+      };
+    }
 
     const {
       data: { subscription },
@@ -88,16 +101,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, fetchProfile]);
 
   const signInWithGoogle = async (redirectTo = "/") => {
+    if (!publicEnv.isConfigured) {
+      throw new Error(
+        "Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local."
+      );
+    }
+
     const origin =
       typeof window !== "undefined"
         ? window.location.origin
         : "http://localhost:3000";
 
-    const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(
-      redirectTo
-    )}`;
+    const callbackUrl = `${origin}/auth/callback`;
 
-    await supabase.auth.signInWithOAuth({
+    // Persist destination across OAuth redirects
+    if (typeof document !== "undefined" && redirectTo && redirectTo !== "/") {
+      document.cookie = `sb_auth_next=${encodeURIComponent(
+        redirectTo
+      )}; path=/; max-age=300; SameSite=Lax`;
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: callbackUrl,
@@ -108,6 +132,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
       },
     });
+
+    if (error) {
+      throw error;
+    }
   };
 
   const signOut = async () => {

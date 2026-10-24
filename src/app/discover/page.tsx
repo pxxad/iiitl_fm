@@ -10,14 +10,20 @@ export default function DiscoverPage() {
   const { user } = useAuth();
   const [queueData, setQueueData] = useState<QueueResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [isHistoricalView, setIsHistoricalView] = useState(false);
 
-  const fetchQueue = useCallback(async () => {
+  const fetchQueue = useCallback(async (date?: string) => {
     try {
       setIsLoading(true);
-      const res = await fetch("/api/queue/today");
+      const url = date ? `/api/queue/history?date=${encodeURIComponent(date)}` : "/api/queue/today";
+      const res = await fetch(url);
       if (res.ok) {
-        const data: QueueResponse = await res.json();
+        const data = await res.json();
         setQueueData(data);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || "Failed to load queue for the requested date.");
       }
     } catch (err) {
       console.error("[Discover] Failed to fetch queue:", err);
@@ -30,6 +36,21 @@ export default function DiscoverPage() {
     fetchQueue();
   }, [fetchQueue]);
 
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const d = e.target.value;
+    setSelectedDate(d);
+    if (d) {
+      setIsHistoricalView(true);
+      fetchQueue(d);
+    }
+  };
+
+  const resetToToday = () => {
+    setIsHistoricalView(false);
+    setSelectedDate("");
+    fetchQueue();
+  };
+
   return (
     <div className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
       {/* Page Header */}
@@ -37,28 +58,54 @@ export default function DiscoverPage() {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200/60">
-              Campus Lineup
+              {isHistoricalView ? "Archived Lineup" : "Campus Lineup"}
             </span>
             <span className="text-xs text-slate-500 font-medium">
               Queue Date: {queueData?.date || "Today"} (Asia/Kolkata)
             </span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Today&apos;s Broadcast Queue
+          <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+            {isHistoricalView ? `Broadcast Archive (${queueData?.date})` : "Today's Broadcast Queue"}
           </h1>
-          <p className="text-sm text-slate-600 mt-1 max-w-xl">
-            Live queue of tracks submitted by students for today&apos;s shared
-            campus listening session.
+          <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-xl">
+            {isHistoricalView
+              ? "Read-only archive of songs submitted and broadcast on this date."
+              : "Live queue of tracks submitted by students for today's shared campus listening session."}
           </p>
         </div>
 
-        <Link
-          href="/submit"
-          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 active:scale-95 transition-all self-start sm:self-center"
-        >
-          <span>🎵</span>
-          <span>Submit a Song</span>
-        </Link>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex items-center justify-between sm:justify-start gap-2 bg-white px-3.5 py-2.5 rounded-2xl border border-slate-200 shadow-sm text-xs min-h-[44px]">
+            <label htmlFor="history-date-picker" className="font-semibold text-slate-600 flex items-center gap-1 shrink-0">
+              <span>📅</span> Past:
+            </label>
+            <input
+              id="history-date-picker"
+              type="date"
+              value={selectedDate}
+              onChange={handleDateChange}
+              max={new Date().toISOString().split("T")[0]}
+              className="text-xs text-slate-700 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer flex-1 sm:flex-initial min-w-[130px]"
+            />
+            {isHistoricalView && (
+              <button
+                onClick={resetToToday}
+                className="text-indigo-600 hover:text-indigo-800 font-bold ml-1 text-xs px-2 py-1 rounded-lg bg-indigo-50 touch-manipulation"
+                title="Return to today's queue"
+              >
+                Today
+              </button>
+            )}
+          </div>
+
+          <Link
+            href="/submit"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 active:scale-95 transition-all min-h-[44px] touch-manipulation"
+          >
+            <span>🎵</span>
+            <span>Submit a Song</span>
+          </Link>
+        </div>
       </div>
 
       {/* Info Cards */}
@@ -104,7 +151,7 @@ export default function DiscoverPage() {
             Queue Lineup ({queueData?.totalSongs || 0})
           </h2>
           <button
-            onClick={fetchQueue}
+            onClick={() => fetchQueue()}
             className="text-xs font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
           >
             <span>🔄</span> Refresh Queue

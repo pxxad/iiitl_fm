@@ -55,8 +55,8 @@ export function ReactionPicker({
       </div>
 
       {/* ─── Reaction Pills Bar ───────────────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-2 p-2 rounded-2xl bg-slate-900/40 backdrop-blur-md border border-white/10 shadow-inner">
-        <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex items-center justify-between flex-wrap gap-2 p-1.5 sm:p-2 rounded-2xl bg-slate-900/40 backdrop-blur-md border border-white/10 shadow-inner w-full sm:w-auto">
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
           {REACTION_TYPES.map((r) => {
             const count = reactionCounts[r.value as ReactionType] || 0;
             const isSelected = userReaction === r.value;
@@ -76,7 +76,7 @@ export function ReactionPicker({
                     ? `Remove your ${r.label} reaction`
                     : `React with ${r.label}`
                 }
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                className={`flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold transition-all min-h-[40px] min-w-[40px] touch-manipulation ${
                   isSelected
                     ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-2 ring-indigo-400"
                     : count > 0

@@ -58,3 +58,20 @@ export const REACTION_RATE_LIMIT_MS = 500;
 /** Default number of recent chat messages loaded on initial connection. */
 export const DEFAULT_CHAT_HISTORY_LIMIT = 50;
 
+/** Fixed number of verified campus skip votes required to automatically advance a track. */
+export const SKIP_VOTE_THRESHOLD = 3;
+
+/** Curated report reasons for community moderation. */
+export const REPORT_REASONS = [
+  { value: "offensive_content", label: "Offensive or NSFW Content" },
+  { value: "hate_speech",       label: "Hate Speech or Harassment" },
+  { value: "copyright",         label: "Copyright Infringement" },
+  { value: "spam",              label: "Spam or Advertising" },
+  { value: "harassment",        label: "Targeted Harassment" },
+  { value: "other",             label: "Other Campus Guideline Violation" },
+] as const;
+
+/** Maximum reports a user can submit within a 5-minute rolling window. */
+export const MAX_REPORTS_PER_WINDOW = 3;
+export const REPORT_WINDOW_MS = 300_000;
+
