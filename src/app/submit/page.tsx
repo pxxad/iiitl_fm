@@ -6,8 +6,74 @@ import { MOOD_TAGS, MAX_MESSAGE_LENGTH } from "@/lib/constants";
 import type { MoodTag } from "@/lib/types";
 import { QueueList } from "@/components/QueueList";
 import type { QueueResponse } from "@/app/api/queue/today/route";
+import type { SpotifyTrackResolveResponse } from "@/app/api/spotify/track/route";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+
+// ─── URL Type Detection (client-safe, no secrets) ─────────────────────────────
+
+function detectUrlType(input: string): "youtube" | "spotify" | "unknown" {
+  const trimmed = input.trim();
+  if (!trimmed) return "unknown";
+
+  // Spotify URL patterns
+  if (
+    trimmed.startsWith("spotify:track:") ||
+    trimmed.includes("open.spotify.com/track/") ||
+    trimmed.includes("spotify.com/track/")
+  ) {
+    return "spotify";
+  }
+
+  // YouTube URL patterns
+  if (
+    trimmed.includes("youtube.com/") ||
+    trimmed.includes("youtu.be/") ||
+    /^[a-zA-Z0-9_-]{11}$/.test(trimmed)
+  ) {
+    return "youtube";
+  }
+
+  return "unknown";
+}
+
+// ─── Preview State Types ───────────────────────────────────────────────────────
+
+interface YouTubePreviewMeta {
+  type: "youtube";
+  videoId: string;
+  title: string;
+  artist: string;
+  thumbnailUrl: string;
+}
+
+interface SpotifyPreviewMeta {
+  type: "spotify";
+  trackId: string;
+  title: string;
+  artist: string;
+  allArtists: string;
+  albumArtUrl: string | null;
+  durationSeconds: number | null;
+  externalUrl: string;
+  youtubeResults: SpotifyTrackResolveResponse["youtubeResults"];
+  youtubeSearchAvailable: boolean;
+  /** The YouTube video the user has selected from youtubeResults */
+  selectedVideoId: string | null;
+}
+
+type PreviewMeta = YouTubePreviewMeta | SpotifyPreviewMeta | null;
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return "";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// ─── Page Component ────────────────────────────────────────────────────────────
 
 export default function SubmitPage() {
   const { user, isCampusMember, isLoading: authLoading } = useAuth();
@@ -20,13 +86,8 @@ export default function SubmitPage() {
   const [selectedMood, setSelectedMood] = useState<MoodTag>("chill");
   const [message, setMessage] = useState("");
 
-  // Video preview states
-  const [previewMeta, setPreviewMeta] = useState<{
-    videoId: string;
-    title: string;
-    artist: string;
-    thumbnailUrl: string;
-  } | null>(null);
+  // Preview states
+  const [previewMeta, setPreviewMeta] = useState<PreviewMeta>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -35,7 +96,7 @@ export default function SubmitPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
-  // Load today's queue
+  // ─── Queue Fetch ────────────────────────────────────────────────────────────
   const fetchTodayQueue = useCallback(async () => {
     try {
       setIsLoadingQueue(true);
@@ -55,58 +116,131 @@ export default function SubmitPage() {
     fetchTodayQueue();
   }, [fetchTodayQueue]);
 
-  // Debounced video preview fetch
+  // ─── Debounced Preview Fetch ────────────────────────────────────────────────
   useEffect(() => {
     const trimmed = videoUrl.trim();
+
     if (!trimmed) {
       setPreviewMeta(null);
       setPreviewError(null);
       return;
     }
 
-    const timer = setTimeout(async () => {
-      try {
-        setIsPreviewLoading(true);
-        setPreviewError(null);
+    const urlType = detectUrlType(trimmed);
 
-        const res = await fetch(
-          `/api/youtube/preview?url=${encodeURIComponent(trimmed)}`
+    // Unknown type — only show error once user has typed something meaningful
+    if (urlType === "unknown") {
+      if (trimmed.length > 10) {
+        setPreviewMeta(null);
+        setPreviewError(
+          "Please paste a YouTube or Spotify track link."
         );
-        const data = await res.json();
+      }
+      return;
+    }
 
-        if (res.ok) {
-          setPreviewMeta(data);
-          setPreviewError(null);
+    const timer = setTimeout(async () => {
+      setIsPreviewLoading(true);
+      setPreviewError(null);
+
+      try {
+        if (urlType === "youtube") {
+          // Existing YouTube preview flow — unchanged
+          const res = await fetch(
+            `/api/youtube/preview?url=${encodeURIComponent(trimmed)}`
+          );
+          const data = await res.json();
+
+          if (res.ok) {
+            setPreviewMeta({
+              type: "youtube",
+              videoId: data.videoId,
+              title: data.title,
+              artist: data.artist,
+              thumbnailUrl: data.thumbnailUrl,
+            });
+            setPreviewError(null);
+          } else {
+            setPreviewMeta(null);
+            setPreviewError(data.error || "Invalid YouTube link.");
+          }
         } else {
-          setPreviewMeta(null);
-          setPreviewError(data.error || "Invalid YouTube link.");
+          // Spotify track resolution flow
+          const res = await fetch(
+            `/api/spotify/track?url=${encodeURIComponent(trimmed)}`
+          );
+          const data = await res.json();
+
+          if (res.ok) {
+            const resolved: SpotifyTrackResolveResponse = data;
+            setPreviewMeta({
+              type: "spotify",
+              trackId: resolved.trackId,
+              title: resolved.title,
+              artist: resolved.artist,
+              allArtists: resolved.allArtists,
+              albumArtUrl: resolved.albumArtUrl,
+              durationSeconds: resolved.durationSeconds,
+              externalUrl: resolved.externalUrl,
+              youtubeResults: resolved.youtubeResults,
+              youtubeSearchAvailable: resolved.youtubeSearchAvailable,
+              // Auto-select first result if unambiguous (exactly 1 result)
+              selectedVideoId:
+                resolved.youtubeResults.length === 1
+                  ? resolved.youtubeResults[0].videoId
+                  : null,
+            });
+            setPreviewError(null);
+          } else {
+            setPreviewMeta(null);
+            setPreviewError(data.error || "Could not resolve Spotify track.");
+          }
         }
       } catch {
         setPreviewMeta(null);
-        setPreviewError("Network error checking YouTube link.");
+        setPreviewError("Network error while fetching track info.");
       } finally {
         setIsPreviewLoading(false);
       }
-    }, 400);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [videoUrl]);
 
-  // Handle Song Submission
+  // ─── Determine if submission is ready ──────────────────────────────────────
+  const isReadyToSubmit = (() => {
+    if (!previewMeta) return false;
+    if (previewMeta.type === "youtube") return true;
+    if (previewMeta.type === "spotify") return !!previewMeta.selectedVideoId;
+    return false;
+  })();
+
+  // ─── The effective YouTube video ID for submission ──────────────────────────
+  const effectiveVideoId = (() => {
+    if (!previewMeta) return null;
+    if (previewMeta.type === "youtube") return previewMeta.videoId;
+    if (previewMeta.type === "spotify") return previewMeta.selectedVideoId;
+    return null;
+  })();
+
+  // ─── Handle Submission ──────────────────────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!videoUrl || !previewMeta) return;
+    if (!isReadyToSubmit || !effectiveVideoId) return;
 
     setSubmitError(null);
     setSubmitSuccess(null);
 
     startSubmitTransition(async () => {
       try {
+        // Always submit via the YouTube video ID — existing route unchanged
+        const youtubeVideoUrl = `https://www.youtube.com/watch?v=${effectiveVideoId}`;
+
         const res = await fetch("/api/songs/submit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            videoUrl,
+            videoUrl: youtubeVideoUrl,
             moodTag: selectedMood,
             message,
           }),
@@ -119,7 +253,6 @@ export default function SubmitPage() {
           setVideoUrl("");
           setMessage("");
           setPreviewMeta(null);
-          // Refresh queue to show the new submission
           await fetchTodayQueue();
         } else {
           setSubmitError(data.error || "Failed to submit song.");
@@ -130,7 +263,7 @@ export default function SubmitPage() {
     });
   };
 
-  // ─── Unauthenticated State ────────────────────────────────────────────────
+  // ─── Unauthenticated State ──────────────────────────────────────────────────
   if (!authLoading && (!user || !isCampusMember)) {
     return (
       <div className="flex-1 flex items-center justify-center px-4 py-16">
@@ -226,7 +359,7 @@ export default function SubmitPage() {
         </motion.div>
       )}
 
-      {/* Submission Form (Only if student hasn't submitted yet) */}
+      {/* Submission Form */}
       {!hasAlreadySubmitted && (
         <div className="mb-12 p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-xl shadow-slate-100">
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -246,22 +379,57 @@ export default function SubmitPage() {
               </div>
             )}
 
-            {/* 1. YouTube Link Input */}
+            {/* 1. URL Input — accepts YouTube or Spotify */}
             <div>
               <label
                 htmlFor="videoUrl"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2"
+                className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
               >
-                1. YouTube Link or Video ID
+                1. YouTube or Spotify Track Link
               </label>
+              <p className="text-[11px] text-slate-500 mb-2">
+                Paste a YouTube video link{" "}
+                <span className="text-slate-400">or</span> a Spotify track link
+                — we&apos;ll find the matching video for you.
+              </p>
               <div className="relative">
+                {/* URL type badge */}
+                {videoUrl.trim() && (
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
+                    {detectUrlType(videoUrl) === "youtube" && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 text-red-700 text-[10px] font-bold uppercase">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
+                        </svg>
+                        YouTube
+                      </span>
+                    )}
+                    {detectUrlType(videoUrl) === "spotify" && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-100 text-green-700 text-[10px] font-bold uppercase">
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                        </svg>
+                        Spotify
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <input
                   id="videoUrl"
                   type="text"
                   value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
-                  className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-base sm:text-sm placeholder:text-slate-400 transition-all"
+                  onChange={(e) => {
+                    setVideoUrl(e.target.value);
+                    setPreviewMeta(null);
+                    setPreviewError(null);
+                  }}
+                  placeholder="https://www.youtube.com/watch?v=... or https://open.spotify.com/track/..."
+                  className={`w-full py-3.5 rounded-2xl border focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-base sm:text-sm placeholder:text-slate-400 transition-all ${
+                    videoUrl.trim() && detectUrlType(videoUrl) !== "unknown"
+                      ? "pl-24 pr-4"
+                      : "px-4"
+                  } border-slate-200`}
                   required
                 />
                 {isPreviewLoading && (
@@ -286,7 +454,9 @@ export default function SubmitPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    Checking...
+                    {previewMeta === null && detectUrlType(videoUrl) === "spotify"
+                      ? "Resolving..."
+                      : "Checking..."}
                   </div>
                 )}
               </div>
@@ -298,10 +468,11 @@ export default function SubmitPage() {
               )}
             </div>
 
-            {/* Video Preview Card */}
+            {/* ── YouTube Preview Card ─────────────────────────────────────── */}
             <AnimatePresence>
-              {previewMeta && (
+              {previewMeta?.type === "youtube" && (
                 <motion.div
+                  key="yt-preview"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
@@ -315,7 +486,7 @@ export default function SubmitPage() {
                     />
                     <div className="min-w-0 flex-1">
                       <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">
-                        Verified YouTube Video
+                        ✓ Verified YouTube Video
                       </span>
                       <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                         {previewMeta.title}
@@ -324,6 +495,140 @@ export default function SubmitPage() {
                         {previewMeta.artist}
                       </p>
                     </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* ── Spotify: Track Info + YouTube Candidate Picker ─────────── */}
+              {previewMeta?.type === "spotify" && (
+                <motion.div
+                  key="spotify-preview"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-4">
+                    {/* Resolved Spotify Track Info */}
+                    <div className="p-3 sm:p-4 rounded-2xl bg-green-50/60 border border-green-100 flex items-center gap-3 sm:gap-4">
+                      {previewMeta.albumArtUrl ? (
+                        <img
+                          src={previewMeta.albumArtUrl}
+                          alt={previewMeta.title}
+                          className="w-14 h-14 rounded-xl object-cover shadow-sm shrink-0"
+                        />
+                      ) : (
+                        <div className="w-14 h-14 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
+                          <svg className="w-7 h-7 text-green-600" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                          </svg>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-[10px] font-bold text-green-700 uppercase tracking-wide">
+                            Spotify Track Found
+                          </span>
+                          {previewMeta.durationSeconds && (
+                            <span className="text-[10px] text-slate-400">
+                              {formatDuration(previewMeta.durationSeconds)}
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                          {previewMeta.title}
+                        </h4>
+                        <p className="text-[11px] sm:text-xs text-slate-500 truncate mt-0.5">
+                          {previewMeta.allArtists}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* YouTube Candidate Picker */}
+                    {previewMeta.youtubeSearchAvailable ? (
+                      <>
+                        {previewMeta.youtubeResults.length === 0 ? (
+                          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                            <p className="font-bold mb-1">No YouTube matches found.</p>
+                            <p className="text-amber-700">
+                              We couldn&apos;t find a matching YouTube video for this track.
+                              You can paste a YouTube link for it directly instead.
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                              Select the matching YouTube video
+                            </p>
+                            <div className="space-y-2">
+                              {previewMeta.youtubeResults.map((result) => {
+                                const isSelected =
+                                  previewMeta.selectedVideoId === result.videoId;
+                                return (
+                                  <button
+                                    key={result.videoId}
+                                    type="button"
+                                    onClick={() =>
+                                      setPreviewMeta((prev) =>
+                                        prev?.type === "spotify"
+                                          ? { ...prev, selectedVideoId: result.videoId }
+                                          : prev
+                                      )
+                                    }
+                                    className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all touch-manipulation ${
+                                      isSelected
+                                        ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20"
+                                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                                    }`}
+                                    id={`yt-result-${result.videoId}`}
+                                  >
+                                    <div className="relative shrink-0">
+                                      <img
+                                        src={result.thumbnailUrl}
+                                        alt={result.title}
+                                        className="w-20 h-[54px] rounded-xl object-cover bg-slate-900"
+                                      />
+                                      {isSelected && (
+                                        <div className="absolute inset-0 rounded-xl bg-indigo-600/20 flex items-center justify-center">
+                                          <span className="text-white text-lg">✓</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-xs font-semibold text-slate-900 line-clamp-2 leading-snug">
+                                        {result.title}
+                                      </p>
+                                      <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                                        {result.channelTitle}
+                                      </p>
+                                    </div>
+                                    {isSelected && (
+                                      <span className="shrink-0 text-xs font-bold text-indigo-600 pr-1">
+                                        Selected
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {!previewMeta.selectedVideoId && (
+                              <p className="text-xs text-amber-600 font-medium mt-2">
+                                Please select a video above before submitting.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      // YouTube search not configured
+                      <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                        <p className="font-bold mb-1">YouTube search unavailable.</p>
+                        <p className="text-amber-700">
+                          The YouTube search API is not configured. Please paste a direct
+                          YouTube link instead.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -356,7 +661,7 @@ export default function SubmitPage() {
               </div>
             </div>
 
-            {/* 3. Message / Dedication (Optional) */}
+            {/* 3. Message / Dedication */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label
@@ -390,7 +695,7 @@ export default function SubmitPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={isSubmitting || !previewMeta}
+              disabled={isSubmitting || !isReadyToSubmit}
               className="w-full py-3.5 sm:py-4 px-6 rounded-2xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/25 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[48px] touch-manipulation"
             >
               {isSubmitting ? (

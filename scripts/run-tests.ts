@@ -3,10 +3,11 @@ import { runPhase4Tests } from "../src/lib/__tests__/phase4-playback.test";
 import { runPhase5Tests } from "../src/lib/__tests__/phase5-realtime.test";
 import { runPhase6Tests } from "../src/lib/__tests__/phase6-governance.test";
 import { runOAuthRedirectTests } from "../src/lib/__tests__/oauth-redirect.test";
+import { runPhase8aTests } from "../src/lib/__tests__/phase8a-spotify-submission.test";
 
 async function main() {
   console.log("=========================================");
-  console.log("  IIITL FM — Test Suite Runner (Phases 3–7) ");
+  console.log("  IIITL FM — Test Suite Runner (Phases 3–8A) ");
   console.log("=========================================\n");
 
   let passedCount = 0;
@@ -44,12 +45,17 @@ async function main() {
   const oauthResults = await runOAuthRedirectTests();
   printResults(oauthResults);
 
+  console.log("\n--- Running Phase 8A: Spotify Track Submission Tests ---");
+  const p8aResults = await runPhase8aTests();
+  printResults(p8aResults);
+
   const total =
     p3Results.length +
     p4Results.length +
     p5Results.length +
     p6Results.length +
-    oauthResults.length;
+    oauthResults.length +
+    p8aResults.length;
   console.log("\n-----------------------------------------");
   console.log(`Total: ${total} | Passed: ${passedCount} | Failed: ${failedCount}`);
   console.log("-----------------------------------------");
