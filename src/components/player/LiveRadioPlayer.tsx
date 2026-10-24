@@ -101,6 +101,7 @@ export function LiveRadioPlayer({
   // ─── 2. Initialize YouTube Player Instance ──────────────────────────────────
   const initPlayer = useCallback(() => {
     if (!window.YT || !window.YT.Player || playerRef.current) return;
+    if (!activeSong?.video_id) return; // Do not mount YouTube player if no song is active
 
     const currentExpected = calculateExpectedPosition(
       playbackState?.started_at,
@@ -110,7 +111,7 @@ export function LiveRadioPlayer({
     );
 
     playerRef.current = new window.YT.Player(containerId.current, {
-      videoId: activeSong?.video_id || "",
+      videoId: activeSong.video_id,
       playerVars: {
         autoplay: 1,
         controls: 0,
@@ -133,7 +134,7 @@ export function LiveRadioPlayer({
             p.unMute();
           }
 
-          if (activeSong && playbackState?.playback_status === "playing") {
+          if (playbackState?.playback_status === "playing") {
             p.seekTo(currentExpected, true);
             p.playVideo();
           }
@@ -172,6 +173,19 @@ export function LiveRadioPlayer({
   }, [playbackState, activeSong, isMuted, volume, onTrackEnded, onPlaybackError]);
 
   useEffect(() => {
+    if (!activeSong?.video_id) {
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch {
+          // Ignore
+        }
+        playerRef.current = null;
+        setIsPlayerReady(false);
+      }
+      return;
+    }
+
     if (window.YT && window.YT.Player) {
       initPlayer();
     } else {
@@ -192,7 +206,7 @@ export function LiveRadioPlayer({
         playerRef.current = null;
       }
     };
-  }, [initPlayer]);
+  }, [initPlayer, activeSong?.video_id]);
 
   // ─── 3. Video ID Transition Handling ───────────────────────────────────────
   const currentVideoId = activeSong?.video_id;
@@ -318,12 +332,26 @@ export function LiveRadioPlayer({
       {/* Main Player Display */}
       <div className="p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-6">
         {/* Left: Album Artwork / Video Thumbnail with YouTube IFrame Container */}
-        <div className="relative w-44 h-28 sm:w-56 sm:h-36 rounded-2xl overflow-hidden bg-black shrink-0 border border-slate-800 shadow-inner group">
-          {/* YouTube Video Target Element (Kept visible in DOM for YouTube TOS compliance) */}
+        <div className="relative w-44 h-28 sm:w-56 sm:h-36 rounded-2xl overflow-hidden bg-slate-950 shrink-0 border border-slate-800 shadow-inner group flex items-center justify-center">
+          {/* YouTube Video Target Element (Kept in DOM for YouTube TOS compliance) */}
           <div
             id={containerId.current}
-            className="w-full h-full object-cover pointer-events-none opacity-90 group-hover:opacity-100 transition-opacity"
+            className={`w-full h-full object-cover pointer-events-none transition-opacity ${
+              activeSong ? "opacity-90 group-hover:opacity-100" : "hidden"
+            }`}
           />
+
+          {!activeSong && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center bg-gradient-to-tr from-slate-950 via-indigo-950/40 to-slate-900 select-none">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center text-indigo-400 mb-1.5 shadow-sm">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+              </div>
+              <span className="text-[11px] font-bold text-slate-200 tracking-wide uppercase">On Air</span>
+              <span className="text-[10px] text-slate-400">Awaiting Submissions</span>
+            </div>
+          )}
 
           {/* Buffering Indicator */}
           {isBuffering && (
