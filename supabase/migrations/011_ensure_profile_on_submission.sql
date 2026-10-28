@@ -132,10 +132,21 @@ BEGIN
 
   RETURN to_jsonb(v_new_song);
 END;
+$$;
+
 REVOKE ALL ON FUNCTION public.submit_song_for_today(TEXT, TEXT, TEXT, TEXT, mood_tag, TEXT, INTEGER) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_song_for_today(TEXT, TEXT, TEXT, TEXT, mood_tag, TEXT, INTEGER) TO authenticated;
 
 -- Grant table-level INSERT & SELECT privileges on public.profiles to authenticated role
--- Row-level security (RLS) policies govern which rows the user can insert/select
 GRANT INSERT, SELECT ON public.profiles TO authenticated;
+
+-- Backfill any users already in auth.users who do not have a row in public.profiles
+INSERT INTO public.profiles (id, full_name, avatar_url)
+SELECT
+  u.id,
+  COALESCE(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
+  COALESCE(u.raw_user_meta_data->>'avatar_url', u.raw_user_meta_data->>'picture')
+FROM auth.users u
+ON CONFLICT (id) DO NOTHING;
+
 

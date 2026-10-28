@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       (meta.avatar_url as string) || (meta.picture as string) || null;
     const studentDetails = parseStudentDetailsFromEmail(session.email);
 
-    await supabase.from("profiles").upsert(
+    const { error: profileUpsertError } = await supabase.from("profiles").upsert(
       {
         id: session.user.id,
         full_name: fullName,
@@ -112,6 +112,13 @@ export async function POST(request: NextRequest) {
       },
       { onConflict: "id" }
     );
+
+    if (profileUpsertError) {
+      console.warn(
+        "[Submit Song] Profile upsert notice:",
+        profileUpsertError.message
+      );
+    }
   }
 
   // ─── 4. Attempt Atomic RPC Submission First (Migrations 005 & 006) ────────
