@@ -132,7 +132,10 @@ BEGIN
 
   RETURN to_jsonb(v_new_song);
 END;
-$$;
-
 REVOKE ALL ON FUNCTION public.submit_song_for_today(TEXT, TEXT, TEXT, TEXT, mood_tag, TEXT, INTEGER) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_song_for_today(TEXT, TEXT, TEXT, TEXT, mood_tag, TEXT, INTEGER) TO authenticated;
+
+-- Grant table-level INSERT & SELECT privileges on public.profiles to authenticated role
+-- Row-level security (RLS) policies govern which rows the user can insert/select
+GRANT INSERT, SELECT ON public.profiles TO authenticated;
+
