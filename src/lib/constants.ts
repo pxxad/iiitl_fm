@@ -15,6 +15,9 @@ export const MAX_MESSAGE_LENGTH = 280;
 /** Maximum songs allowed in a single daily queue. */
 export const MAX_SONGS_PER_QUEUE = 50;
 
+/** Maximum songs an individual student can submit per IST calendar day. */
+export const MAX_SONGS_PER_STUDENT_PER_DAY = 5;
+
 /** Number of skip votes required to skip a song (as a fraction of listeners). */
 export const SKIP_THRESHOLD_FRACTION = 0.5; // 50% of active listeners
 

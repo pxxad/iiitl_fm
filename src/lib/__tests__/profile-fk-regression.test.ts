@@ -11,13 +11,14 @@ import { isCampusEmail, parseStudentDetailsFromEmail } from "@/lib/auth/domain-g
 export async function runProfileFKRegressionTests() {
   const results: Array<{ test: string; passed: boolean; error?: string }> = [];
 
-  function assert(condition: boolean, testName: string, errorMsg?: string) {
-    if (condition) {
+  function assert(condition: unknown, testName: string, errorMsg?: string) {
+    if (Boolean(condition)) {
       results.push({ test: testName, passed: true });
     } else {
       results.push({ test: testName, passed: false, error: errorMsg || "Assertion failed" });
     }
   }
+
 
   // ─── Mock Database Simulation ──────────────────────────────────────────────
   const mockProfilesTable = new Map<string, { id: string; full_name: string | null; branch: string | null; batch: string | null }>();

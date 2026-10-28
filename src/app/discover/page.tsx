@@ -113,12 +113,13 @@ export default function DiscoverPage() {
         <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
           <div className="text-xl mb-1">🗳️</div>
           <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-            One Song Per Student
+            Up to 5 Songs Per Student
           </h3>
           <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-            Every IIITL student gets 1 contribution daily to ensure fair and
-            diverse musical rotation.
+            Every IIITL student gets up to 5 contributions daily to ensure an active
+            and diverse musical rotation.
           </p>
+
         </div>
 
         <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm">

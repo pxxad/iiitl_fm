@@ -291,76 +291,108 @@ export default function SubmitPage() {
     );
   }
 
-  const hasAlreadySubmitted = !!queueData?.userSubmittedSong;
+  const userSubmissionsCount =
+    queueData?.userSubmissionsCount ??
+    (queueData?.userSubmittedSongs?.length ?? (queueData?.userSubmittedSong ? 1 : 0));
+  const maxSubmissions = queueData?.maxSubmissionsPerUser ?? 5;
+  const remainingSubmissions =
+    queueData?.remainingSubmissions ??
+    Math.max(0, maxSubmissions - userSubmissionsCount);
+  const hasReachedLimit = remainingSubmissions <= 0;
+  const userSubmittedSongs =
+    queueData?.userSubmittedSongs ??
+    (queueData?.userSubmittedSong ? [queueData.userSubmittedSong] : []);
 
   return (
     <div className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
       {/* Header Banner */}
       <div className="mb-8">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
           <span className="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200/60">
             Daily Queue Submissions
           </span>
           <span className="text-xs text-slate-500 font-medium">
             Date: {queueData?.date || "Today"} (IST)
           </span>
+          <span
+            id="remaining-submissions-badge"
+            className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${
+              remainingSubmissions > 0
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-amber-50 text-amber-700 border-amber-200"
+            }`}
+          >
+            {remainingSubmissions} of {maxSubmissions} submissions remaining today
+          </span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
           Queue a Track for the Campus
         </h1>
         <p className="text-sm text-slate-600 mt-1 max-w-xl">
-          Pick a song that sets the vibe. Each student gets 1 submission per day
-          to keep the playlist democratic and diverse.
+          Pick songs that set the vibe. Each student gets up to 5 submissions
+          per day to keep the playlist democratic and diverse.
         </p>
       </div>
 
-      {/* Already Submitted Today Notification */}
-      {hasAlreadySubmitted && queueData?.userSubmittedSong && (
+      {/* Your Submissions Today Section */}
+      {userSubmittedSongs.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8 p-6 rounded-3xl bg-gradient-to-r from-emerald-50/80 via-white to-indigo-50/40 border border-emerald-200 shadow-sm"
         >
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="relative w-20 h-14 rounded-2xl overflow-hidden bg-slate-900 shrink-0 shadow-sm">
-                {queueData.userSubmittedSong.thumbnail_url && (
-                  <img
-                    src={queueData.userSubmittedSong.thumbnail_url}
-                    alt={queueData.userSubmittedSong.title}
-                    className="w-full h-full object-cover"
-                  />
-                )}
-              </div>
-              <div>
-                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wider mb-1">
-                  ✓ Your Song for Today is Locked In
-                </span>
-                <h3 className="text-base font-bold text-slate-900">
-                  {queueData.userSubmittedSong.title}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {queueData.userSubmittedSong.artist} • Position #
-                  {queueData.userSubmittedSong.position} in queue
-                </p>
-              </div>
-            </div>
-
-            <div className="text-left sm:text-right">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                Status: {queueData.userSubmittedSong.status.toUpperCase()}
+          <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-emerald-100">
+            <div>
+              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wider mb-0.5">
+                {hasReachedLimit
+                  ? "✓ All 5 Submissions Locked In"
+                  : `✓ Your Submissions for Today (${userSubmissionsCount} of ${maxSubmissions})`}
               </span>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Next submission opens tomorrow at 12:00 AM IST
+              <p className="text-xs text-slate-600">
+                {hasReachedLimit
+                  ? "You have reached your daily limit of 5 song submissions for today. Submissions reopen tomorrow at 12:00 AM IST."
+                  : `You can submit ${remainingSubmissions} more track${remainingSubmissions === 1 ? "" : "s"} today.`}
               </p>
             </div>
+            <span className="shrink-0 text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+              {remainingSubmissions} left today
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {userSubmittedSongs.map((s, idx) => (
+              <div
+                key={s.id || idx}
+                className="flex items-center gap-3 p-3 rounded-2xl bg-white/90 border border-emerald-100 shadow-xs"
+              >
+                <div className="relative w-14 h-10 rounded-xl overflow-hidden bg-slate-900 shrink-0">
+                  {s.thumbnail_url && (
+                    <img
+                      src={s.thumbnail_url}
+                      alt={s.title}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-xs font-bold text-slate-900 truncate">
+                    {s.title}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {s.artist} • Pos #{s.position}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  {s.status.toUpperCase()}
+                </span>
+              </div>
+            ))}
           </div>
         </motion.div>
       )}
 
-      {/* Submission Form */}
-      {!hasAlreadySubmitted && (
+      {/* Submission Form (Shown when user has remaining submissions) */}
+      {!hasReachedLimit && (
         <div className="mb-12 p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-xl shadow-slate-100">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Error banner */}
@@ -378,6 +410,7 @@ export default function SubmitPage() {
                 <span>{submitSuccess}</span>
               </div>
             )}
+
 
             {/* 1. URL Input — accepts YouTube or Spotify */}
             <div>
@@ -725,9 +758,12 @@ export default function SubmitPage() {
               ) : (
                 <>
                   <span>🚀</span>
-                  <span>Submit to Today&apos;s Broadcast</span>
+                  <span>
+                    Submit to Today&apos;s Broadcast ({remainingSubmissions} of {maxSubmissions} left)
+                  </span>
                 </>
               )}
+
             </button>
           </form>
         </div>

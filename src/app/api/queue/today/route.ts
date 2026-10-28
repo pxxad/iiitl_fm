@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { todayInIST } from "@/lib/utils";
 import { getCampusUser } from "@/lib/auth/server";
+import { MAX_SONGS_PER_STUDENT_PER_DAY } from "@/lib/constants";
 import type { Song, DailyQueue, Profile } from "@/lib/types";
 
 export interface QueueResponse {
@@ -13,6 +14,14 @@ export interface QueueResponse {
     }
   >;
   userSubmittedSong: Song | null;
+  userSubmittedSongs: Array<
+    Song & {
+      profiles: Pick<Profile, "full_name" | "avatar_url" | "branch" | "batch"> | null;
+    }
+  >;
+  userSubmissionsCount: number;
+  maxSubmissionsPerUser: number;
+  remainingSubmissions: number;
   totalSongs: number;
 }
 
@@ -39,6 +48,10 @@ export async function GET() {
       queue: null,
       songs: [],
       userSubmittedSong: null,
+      userSubmittedSongs: [],
+      userSubmissionsCount: 0,
+      maxSubmissionsPerUser: MAX_SONGS_PER_STUDENT_PER_DAY,
+      remainingSubmissions: MAX_SONGS_PER_STUDENT_PER_DAY,
       totalSongs: 0,
     });
   }
@@ -71,15 +84,20 @@ export async function GET() {
       profiles: null,
     }));
 
-    const userSong = session
-      ? formattedFallback.find((s) => s.added_by === session.user.id) || null
-      : null;
+    const userSongsFallback = session
+      ? formattedFallback.filter((s) => s.added_by === session.user.id)
+      : [];
+    const countFallback = userSongsFallback.length;
 
     return NextResponse.json<QueueResponse>({
       date: todayIST,
       queue: queue as DailyQueue,
       songs: formattedFallback,
-      userSubmittedSong: userSong,
+      userSubmittedSong: userSongsFallback[0] || null,
+      userSubmittedSongs: userSongsFallback,
+      userSubmissionsCount: countFallback,
+      maxSubmissionsPerUser: MAX_SONGS_PER_STUDENT_PER_DAY,
+      remainingSubmissions: Math.max(0, MAX_SONGS_PER_STUDENT_PER_DAY - countFallback),
       totalSongs: formattedFallback.length,
     });
   }
@@ -90,15 +108,22 @@ export async function GET() {
     }
   >;
 
-  const userSong = session
-    ? songs.find((s) => s.added_by === session.user.id) || null
-    : null;
+  const userSongs = session
+    ? songs.filter((s) => s.added_by === session.user.id)
+    : [];
+  const userSubmissionsCount = userSongs.length;
+  const remainingSubmissions = Math.max(0, MAX_SONGS_PER_STUDENT_PER_DAY - userSubmissionsCount);
 
   return NextResponse.json<QueueResponse>({
     date: todayIST,
     queue: queue as DailyQueue,
     songs,
-    userSubmittedSong: userSong,
+    userSubmittedSong: userSongs[0] || null,
+    userSubmittedSongs: userSongs,
+    userSubmissionsCount,
+    maxSubmissionsPerUser: MAX_SONGS_PER_STUDENT_PER_DAY,
+    remainingSubmissions,
     totalSongs: songs.length,
   });
 }
+

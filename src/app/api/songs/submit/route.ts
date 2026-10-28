@@ -4,7 +4,12 @@ import { parseStudentDetailsFromEmail } from "@/lib/auth/domain-guard";
 import { createClient } from "@/lib/supabase/server";
 import { extractYouTubeId, fetchYouTubeMetadata } from "@/lib/youtube";
 import { todayInIST } from "@/lib/utils";
-import { MAX_MESSAGE_LENGTH, MAX_SONGS_PER_QUEUE, MOOD_TAGS } from "@/lib/constants";
+import {
+  MAX_MESSAGE_LENGTH,
+  MAX_SONGS_PER_QUEUE,
+  MAX_SONGS_PER_STUDENT_PER_DAY,
+  MOOD_TAGS,
+} from "@/lib/constants";
 import type { MoodTag } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -137,10 +142,25 @@ export async function POST(request: NextRequest) {
     );
 
     if (!rpcError && rpcData) {
+      const { count: userSongCount } = await supabase
+        .from("songs")
+        .select("*", { count: "exact", head: true })
+        .eq("queue_id", rpcData.queue_id)
+        .eq("added_by", session.user.id);
+
+      const submissionsToday = userSongCount ?? 1;
+      const remaining = Math.max(0, MAX_SONGS_PER_STUDENT_PER_DAY - submissionsToday);
+
       return NextResponse.json({
         success: true,
         song: rpcData,
-        message: "Your song has been successfully added to today's queue!",
+        submissionsToday,
+        remainingSubmissions: remaining,
+        maxSubmissions: MAX_SONGS_PER_STUDENT_PER_DAY,
+        message:
+          remaining > 0
+            ? `Your song has been successfully added to today's queue! You have ${remaining} of ${MAX_SONGS_PER_STUDENT_PER_DAY} submissions remaining today.`
+            : `Your song has been successfully added to today's queue! You have reached your daily limit of ${MAX_SONGS_PER_STUDENT_PER_DAY} submissions for today.`,
       });
     }
 
@@ -162,6 +182,21 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: errMsg }, { status: 409 });
       }
 
+      // Student daily submission limit reached (Max 5 per student per day)
+      if (
+        rpcError.code === "54001" ||
+        errMsg.includes("limit of 5") ||
+        errMsg.includes("daily limit")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "You have reached your daily limit of 5 song submissions for today. Submissions reopen tomorrow at 12:00 AM IST.",
+          },
+          { status: 409 }
+        );
+      }
+
       // Duplicate submission checks
       if (rpcError.code === "23505" || errMsg.includes("already")) {
         if (errMsg.includes("already been submitted to today's queue")) {
@@ -176,11 +211,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error:
-              "You have already submitted a song for today. Each student can submit one song per calendar day.",
+              "You have reached your daily limit of 5 song submissions for today. Submissions reopen tomorrow at 12:00 AM IST.",
           },
           { status: 409 }
         );
       }
+
 
       // Only if the function does not exist (undefined_function 42883) do we fall back
       if (rpcError.code !== "42883") {
@@ -250,19 +286,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // C. Check if this student already submitted a song to today's queue
-  const { data: userSubmission } = await supabase
+  // C. Check if this student reached their daily limit (Max 5 songs per day)
+  const { count: userSubmissionCount } = await supabase
     .from("songs")
-    .select("id")
+    .select("*", { count: "exact", head: true })
     .eq("queue_id", queueId)
-    .eq("added_by", session.user.id)
-    .single();
+    .eq("added_by", session.user.id);
 
-  if (userSubmission) {
+  if (
+    userSubmissionCount !== null &&
+    userSubmissionCount >= MAX_SONGS_PER_STUDENT_PER_DAY
+  ) {
     return NextResponse.json(
       {
-        error:
-          "You have already submitted a song for today. Each student can submit one song per calendar day.",
+        error: `You have reached your daily limit of ${MAX_SONGS_PER_STUDENT_PER_DAY} song submissions for today. Submissions reopen tomorrow at 12:00 AM IST.`,
       },
       { status: 409 }
     );
@@ -329,7 +366,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "You have already submitted a song for today. Each student can submit one song per calendar day.",
+            "You have reached your daily limit of 5 song submissions for today. Submissions reopen tomorrow at 12:00 AM IST.",
         },
         { status: 409 }
       );
@@ -341,9 +378,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { count: finalUserCount } = await supabase
+    .from("songs")
+    .select("*", { count: "exact", head: true })
+    .eq("queue_id", queueId)
+    .eq("added_by", session.user.id);
+
+  const fallbackSubmissionsToday = finalUserCount ?? 1;
+  const fallbackRemaining = Math.max(
+    0,
+    MAX_SONGS_PER_STUDENT_PER_DAY - fallbackSubmissionsToday
+  );
+
   return NextResponse.json({
     success: true,
     song: insertedSong,
-    message: "Your song has been successfully added to today's queue!",
+    submissionsToday: fallbackSubmissionsToday,
+    remainingSubmissions: fallbackRemaining,
+    maxSubmissions: MAX_SONGS_PER_STUDENT_PER_DAY,
+    message:
+      fallbackRemaining > 0
+        ? `Your song has been successfully added to today's queue! You have ${fallbackRemaining} of ${MAX_SONGS_PER_STUDENT_PER_DAY} submissions remaining today.`
+        : `Your song has been successfully added to today's queue! You have reached your daily limit of ${MAX_SONGS_PER_STUDENT_PER_DAY} submissions for today.`,
   });
 }
+

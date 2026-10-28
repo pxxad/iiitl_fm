@@ -130,9 +130,12 @@ export async function runPhase3Tests() {
           return { ok: false, reason: "Queue is full" };
         }
 
-        // Duplicate user check
-        if (this.songs.some((s) => s.userId === userId && s.date === date)) {
-          return { ok: false, reason: "Duplicate user submission" };
+        // Per-student daily limit check (Max 5 per student per day)
+        const userCount = this.songs.filter(
+          (s) => s.userId === userId && s.date === date
+        ).length;
+        if (userCount >= 5) {
+          return { ok: false, reason: "User reached daily limit of 5 submissions" };
         }
 
         // Duplicate video check
@@ -161,18 +164,19 @@ export async function runPhase3Tests() {
     }
   }
 
-  // TEST A: 5 simultaneous submissions by the SAME user
+  // TEST A: 10 simultaneous submissions by the SAME user with 10 different videos
   const sim1 = new ConcurrentQueueSimulator();
-  const sameUserPromises = [1, 2, 3, 4, 5].map((i) =>
+  const sameUserPromises = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) =>
     sim1.submit("lit2023001@iiitl.ac.in", `vid${i}1234567`, istDate)
   );
   const sameUserResults = await Promise.all(sameUserPromises);
   const sameUserSuccesses = sameUserResults.filter((r) => r.ok);
   const sameUserFailures = sameUserResults.filter((r) => !r.ok);
   assert(
-    sameUserSuccesses.length === 1 && sameUserFailures.length === 4,
-    "Concurrency: Exactly 1 submission succeeds for simultaneous requests by same user"
+    sameUserSuccesses.length === 5 && sameUserFailures.length === 5,
+    "Concurrency: Exactly 5 submissions succeed for simultaneous requests by same user (limit 5)"
   );
+
 
   // TEST B: 5 simultaneous submissions of the SAME video by DIFFERENT users
   const sim2 = new ConcurrentQueueSimulator();
