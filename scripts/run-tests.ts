@@ -4,10 +4,11 @@ import { runPhase5Tests } from "../src/lib/__tests__/phase5-realtime.test";
 import { runPhase6Tests } from "../src/lib/__tests__/phase6-governance.test";
 import { runOAuthRedirectTests } from "../src/lib/__tests__/oauth-redirect.test";
 import { runPhase8aTests } from "../src/lib/__tests__/phase8a-spotify-submission.test";
+import { runProfileFKRegressionTests } from "../src/lib/__tests__/profile-fk-regression.test";
 
 async function main() {
   console.log("=========================================");
-  console.log("  IIITL FM — Test Suite Runner (Phases 3–8A) ");
+  console.log("  IIITL FM — Test Suite Runner (Phases 3–8) ");
   console.log("=========================================\n");
 
   let passedCount = 0;
@@ -49,13 +50,18 @@ async function main() {
   const p8aResults = await runPhase8aTests();
   printResults(p8aResults);
 
+  console.log("\n--- Running Profile FK & Self-Healing Regression Tests ---");
+  const profileFkResults = await runProfileFKRegressionTests();
+  printResults(profileFkResults);
+
   const total =
     p3Results.length +
     p4Results.length +
     p5Results.length +
     p6Results.length +
     oauthResults.length +
-    p8aResults.length;
+    p8aResults.length +
+    profileFkResults.length;
   console.log("\n-----------------------------------------");
   console.log(`Total: ${total} | Passed: ${passedCount} | Failed: ${failedCount}`);
   console.log("-----------------------------------------");

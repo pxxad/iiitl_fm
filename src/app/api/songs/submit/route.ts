@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCampusUser } from "@/lib/auth/server";
+import { parseStudentDetailsFromEmail } from "@/lib/auth/domain-guard";
 import { createClient } from "@/lib/supabase/server";
 import { extractYouTubeId, fetchYouTubeMetadata } from "@/lib/youtube";
 import { todayInIST } from "@/lib/utils";
@@ -88,6 +89,30 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = await createClient();
+
+  // ─── 3.5. Ensure Profile Exists in public.profiles (fk_songs_profiles) ────
+  // If the user's profile row is missing (e.g., registered before migrations,
+  // or trigger bypassed), upsert the profile using session data before the RPC
+  // runs to prevent foreign key constraint violations on fk_songs_profiles.
+  if (!session.profile) {
+    const meta = session.user.user_metadata ?? {};
+    const fullName =
+      (meta.full_name as string) || (meta.name as string) || null;
+    const avatarUrl =
+      (meta.avatar_url as string) || (meta.picture as string) || null;
+    const studentDetails = parseStudentDetailsFromEmail(session.email);
+
+    await supabase.from("profiles").upsert(
+      {
+        id: session.user.id,
+        full_name: fullName,
+        avatar_url: avatarUrl,
+        branch: studentDetails.branch,
+        batch: studentDetails.batch,
+      },
+      { onConflict: "id" }
+    );
+  }
 
   // ─── 4. Attempt Atomic RPC Submission First (Migrations 005 & 006) ────────
   try {

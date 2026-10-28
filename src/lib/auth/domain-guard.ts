@@ -40,7 +40,7 @@ export function parseStudentDetailsFromEmail(email: string | null | undefined): 
   }
 
   const localPart = email.trim().toLowerCase().split("@")[0];
-  const match = localPart.match(/^([a-z]{2,4})(\d{4})(\d{2,4})$/);
+  const match = localPart.match(/^([a-z]{2,6})(\d{4})(\d{2,4})$/);
 
   if (!match) {
     return { branch: null, batch: null, rollNumber: localPart.toUpperCase() };
